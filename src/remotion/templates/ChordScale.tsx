@@ -22,7 +22,7 @@ export const ChordScale: React.FC<ChordScaleProps> = (p) => {
   const b = resolveBrand(p);
   const f = useCurrentFrame();
   const {fps, durationInFrames} = useVideoConfig();
-  const {u, vertical, width} = useUnit();
+  const {u, vertical, width, square} = useUnit();
   const notes = parseNotes(p.notes);
   const sym = spring({frame: f - 6, fps, config: {damping: 11}});
   const out = interpolate(f, [durationInFrames - 12, durationInFrames], [1, 0], clamp);
@@ -30,16 +30,16 @@ export const ChordScale: React.FC<ChordScaleProps> = (p) => {
   const step = Math.max(8, Math.floor((durationInFrames * 0.55) / Math.max(1, notes.length)));
   return (
     <Stage p={p}>
-      <AbsoluteFill style={{opacity: out, padding: `${(vertical ? 170 : 80) * u}px ${80 * u}px`, display: 'flex', flexDirection: 'column', justifyContent: 'space-around', alignItems: 'center'}}>
+      <AbsoluteFill style={{opacity: out, padding: `${(vertical ? 170 : 50) * u}px ${80 * u}px`, display: 'flex', flexDirection: 'column', justifyContent: 'space-around', alignItems: 'center'}}>
         <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20 * u}}>
           <Badge brand={b} text={p.kind} size={32 * u} />
-          <div style={{display: 'flex', alignItems: 'baseline', gap: 36 * u, flexDirection: vertical ? 'column' : 'row', justifyContent: 'center'}}>
-            <div style={{fontFamily: FONT_LATIN_SERIF, fontWeight: 800, fontSize: (vertical ? 200 : 170) * u, color: b.accent, direction: 'ltr', lineHeight: 1, transform: `scale(${interpolate(sym, [0, 1], [0.5, 1])})`, opacity: sym, alignSelf: 'center'}}>{p.symbol}</div>
+          <div style={{display: 'flex', alignItems: 'baseline', gap: 36 * u, flexDirection: vertical && !square ? 'column' : 'row', justifyContent: 'center'}}>
+            <div style={{fontFamily: FONT_LATIN_SERIF, fontWeight: 800, fontSize: (vertical ? 200 : 150) * u, color: b.accent, direction: 'ltr', lineHeight: 1, transform: `scale(${interpolate(sym, [0, 1], [0.5, 1])})`, opacity: sym, alignSelf: 'center'}}>{p.symbol}</div>
             <Words text={p.nameFa} size={(vertical ? 80 : 84) * u} color={b.text} weight={900} font={FONT_FA_DISPLAY} start={14} />
           </div>
           <div style={{fontSize: 40 * u, color: b.muted, fontWeight: 600, opacity: interpolate(f, [24, 36], [0, 1], clamp)}}><span>فرمول: </span><bdi dir="ltr" style={{unicodeBidi: 'isolate', direction: 'ltr'}}>{toFa((p.formula || '').replace(/b(?=\d)/g, '♭').replace(/#(?=\d)/g, '♯'))}</bdi></div>
         </div>
-        <Keyboard brand={b} notes={notes} fingers={parseFingers(p.fingers)} mode={p.mode} start={playStart} step={step} width={vertical ? width - 100 * u : 1300 * u} beam={(vertical ? 260 : 170) * u} />
+        <Keyboard brand={b} notes={notes} fingers={parseFingers(p.fingers)} mode={p.mode} start={playStart} step={step} width={vertical ? width - 100 * u : 940 * u} beam={(square ? 110 : vertical ? 260 : 90) * u} />
         <div style={{display: 'flex', gap: 18 * u, flexWrap: 'wrap', justifyContent: 'center'}}>
           {notes.map((m, i) => {
             const s = spring({frame: f - playStart - (p.mode === 'chord' ? 0 : i * step), fps, config: {damping: 14}});

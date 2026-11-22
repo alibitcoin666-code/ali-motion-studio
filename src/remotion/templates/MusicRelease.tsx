@@ -53,10 +53,11 @@ export const MusicRelease: React.FC<MusicReleaseProps> = (p) => {
   const b = resolveBrand(p);
   const f = useCurrentFrame();
   const {fps, durationInFrames} = useVideoConfig();
-  const {u, vertical, width} = useUnit();
+  const {u, vertical: v0, width, square} = useUnit();
+  const vertical = v0 && !square;
   const coverIn = spring({frame: f - 4, fps, config: {damping: 15}});
   const out = interpolate(f, [durationInFrames - 15, durationInFrames], [1, 0], clamp);
-  const coverSize = (vertical ? 720 : 560) * u;
+  const coverSize = (vertical ? 600 : square ? 420 : 560) * u;
   const rot = f * 0.6;
   const specW = vertical ? width - 140 * u : 1500 * u;
   const cover = p.coverUrl ? (
@@ -68,10 +69,10 @@ export const MusicRelease: React.FC<MusicReleaseProps> = (p) => {
   );
   return (
     <Stage p={p} intensity={1.1}>
-      <AbsoluteFill style={{opacity: out, display: 'flex', flexDirection: vertical ? 'column' : 'row', justifyContent: 'center', alignItems: 'center', gap: (vertical ? 70 : 110) * u, padding: 80 * u, paddingBottom: (vertical ? 80 : 300) * u}}>
-        <div style={{position: 'relative', width: coverSize * 1.25, height: coverSize, opacity: coverIn, transform: `scale(${interpolate(coverIn, [0, 1], [0.8, 1])})`}}>
+      <AbsoluteFill style={{opacity: out, display: 'flex', flexDirection: vertical ? 'column' : 'row', justifyContent: 'center', alignItems: 'center', gap: (vertical ? 70 : 110) * u, padding: 80 * u, paddingBottom: (vertical ? 420 : 300) * u}}>
+        <div style={{position: 'relative', width: coverSize * 1.45, height: coverSize, opacity: coverIn, transform: `scale(${interpolate(coverIn, [0, 1], [0.8, 1])})`}}>
           {/* vinyl */}
-          <svg width={coverSize} height={coverSize} style={{position: 'absolute', top: 0, left: 0, transform: `translateX(${interpolate(coverIn, [0, 1], [0, -coverSize * 0.25])}px) rotate(${rot}deg)`}}>
+          <svg width={coverSize} height={coverSize} style={{position: 'absolute', top: 0, left: 0, transform: `translateX(${interpolate(coverIn, [0, 1], [coverSize * 0.45, 0])}px) rotate(${rot}deg)`}}>
             <circle cx={coverSize / 2} cy={coverSize / 2} r={coverSize / 2} fill="#0A0A0A" />
             {[0.92, 0.8, 0.68, 0.56].map((r, i) => (
               <circle key={i} cx={coverSize / 2} cy={coverSize / 2} r={(coverSize / 2) * r} fill="none" stroke={hexA('#FFFFFF', 0.07)} strokeWidth={2} />
@@ -81,7 +82,7 @@ export const MusicRelease: React.FC<MusicReleaseProps> = (p) => {
           </svg>
           <div style={{position: 'absolute', top: 0, right: 0, boxShadow: `0 ${30 * u}px ${80 * u}px rgba(0,0,0,0.6)`, borderRadius: 28 * u}}>{cover}</div>
         </div>
-        <div style={{display: 'flex', flexDirection: 'column', gap: 24 * u, alignItems: vertical ? 'center' : 'flex-start', textAlign: vertical ? 'center' : 'right', maxWidth: 820 * u}}>
+        <div style={{display: 'flex', flexDirection: 'column', gap: 24 * u, alignItems: vertical ? 'center' : 'flex-start', textAlign: vertical ? 'center' : 'right', maxWidth: (square ? 600 : 820) * u}}>
           <Badge brand={b} text={p.tagline} size={30 * u} start={10} />
           <Words text={p.trackTitle} size={(vertical ? 110 : 112) * u} color={b.text} weight={900} font={FONT_FA_DISPLAY} start={16} align={vertical ? 'center' : 'flex-start'} mode="slam" />
           {p.trackTitleEn ? <div style={{fontFamily: FONT_LATIN_SERIF, fontSize: 46 * u, color: b.accent, direction: 'ltr', letterSpacing: 4 * u, opacity: interpolate(f, [26, 40], [0, 1], clamp)}}>{p.trackTitleEn}</div> : null}

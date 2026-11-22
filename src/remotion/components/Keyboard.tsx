@@ -21,9 +21,11 @@ export const Keyboard: React.FC<{
   showNames?: boolean;
   beam?: number; // beam height in px (0 = none)
   minOctaves?: number;
-}> = ({brand, notes, fingers = [], mode = 'sequence', start = 0, step = 10, width, showNames = true, beam = 160, minOctaves = 2}) => {
+}> = ({brand, notes, fingers = [], mode = 'sequence', start = 0, step = 10, width: widthIn, showNames = true, beam = 160, minOctaves = 2}) => {
   const f = useCurrentFrame();
-  const {fps} = useVideoConfig();
+  const {fps, width: CW, height: CH} = useVideoConfig();
+  // On square canvases keep the keyboard compact so text and labels still fit.
+  const width = CW === CH ? Math.min(widthIn, CW * 0.78) : widthIn;
 
   // Range: start at the C below the lowest note, cover at least `minOctaves`.
   const lo = notes.length ? Math.min(...notes) : 48;

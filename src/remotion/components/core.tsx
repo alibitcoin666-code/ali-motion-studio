@@ -7,7 +7,9 @@ import {FONT_FA, FONT_LATIN_SERIF, useFontsReady} from '../fonts';
 /** Scale unit: 1 = 1px on a 1080px short side. */
 export const useUnit = () => {
   const {width, height} = useVideoConfig();
-  return {u: Math.min(width, height) / 1080, width, height, vertical: height > width, square: height === width};
+  const square = height === width;
+  // Square uses the stacked (vertical) layout, scaled down to fit the shorter canvas.
+  return {u: (Math.min(width, height) / 1080) * (square ? 0.74 : 1), width, height, vertical: height >= width, square};
 };
 
 export const clamp = {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'} as const;
