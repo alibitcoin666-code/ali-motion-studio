@@ -34,6 +34,28 @@ const REPO = process.env.GITHUB_REPOSITORY || '';
 const TAG = process.env.RELEASE_TAG || 'renders';
 const MAX_JOBS = +(process.env.MAX_JOBS || 4);
 const PY = process.env.PYTHON || 'python3';
+// Portable tool paths (Muse VM / any Linux box): env overrides, else PATH
+const FFMPEG = process.env.FFMPEG || 'ffmpeg';
+const FFPROBE = process.env.FFPROBE || 'ffprobe';
+// Draft = half resolution + fast encode, for quick previews on a 2-vCPU machine
+const DRAFT = process.env.AMS_DRAFT === '1';
+const CONCURRENCY = +(process.env.AMS_CONCURRENCY || 0) || Math.max(1, Math.min(8, os.cpus().length));
+/** Reuse a Chrome Headless Shell already on the machine (Playwright cache) so nothing big has to download. */
+function findBrowser() {
+  if (process.env.AMS_BROWSER) return process.env.AMS_BROWSER;
+  if (fs.existsSync(path.join(root, 'node_modules/.remotion/chrome-headless-shell'))) return null; // Remotion's own, already downloaded
+  const base = path.join(os.homedir(), '.cache/ms-playwright');
+  try {
+    for (const d of fs.readdirSync(base).filter((x) => x.startsWith('chromium_headless_shell')).sort().reverse()) {
+      for (const sub of ['chrome-headless-shell-linux64/chrome-headless-shell', 'chrome-linux/headless_shell']) {
+        const f = path.join(base, d, sub);
+        if (fs.existsSync(f)) return f;
+      }
+    }
+  } catch {}
+  return null;
+}
+const BROWSER = findBrowser();
 
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 const sh = (cmd, a, opts = {}) => execFileSync(cmd, a, {stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', maxBuffer: 64 << 20, ...opts}).trim();
@@ -108,15 +130,16 @@ async function getBundle() {
 }
 
 export async function renderOne(template, props, outFile, scale = 1) {
-  await ensureBrowser();
+  if (!BROWSER) await ensureBrowser();
   const url = await getBundle();
-  const composition = await selectComposition({serveUrl: url, id: template, inputProps: props});
-  log(`render ${template} ${composition.width}x${composition.height} ${composition.durationInFrames}f → ${outFile}`);
+  const composition = await selectComposition({serveUrl: url, id: template, inputProps: props, browserExecutable: BROWSER});
+  if (DRAFT) scale = Math.min(scale, 0.5);
+  log(`render ${template} ${composition.width}x${composition.height} ${composition.durationInFrames}f${DRAFT ? ' (draft)' : ''} concurrency ${CONCURRENCY} → ${outFile}`);
   let last = -1;
   await renderMedia({
-    composition, serveUrl: url, codec: 'h264', crf: 18, pixelFormat: 'yuv420p', x264Preset: 'medium',
-    audioCodec: 'aac', audioBitrate: '320k', colorSpace: 'bt709', outputLocation: outFile, scale, inputProps: props,
-    concurrency: Math.max(1, Math.min(8, os.cpus().length)), chromiumOptions: {gl: 'swangle'}, timeoutInMilliseconds: 120_000,
+    composition, serveUrl: url, codec: 'h264', crf: DRAFT ? 26 : 18, pixelFormat: 'yuv420p', x264Preset: DRAFT ? 'veryfast' : 'medium',
+    audioCodec: 'aac', audioBitrate: DRAFT ? '160k' : '320k', browserExecutable: BROWSER, colorSpace: 'bt709', outputLocation: outFile, scale, inputProps: props,
+    concurrency: CONCURRENCY, chromiumOptions: {gl: 'swangle'}, timeoutInMilliseconds: 120_000,
     onProgress: ({progress}) => { const pct = Math.floor(progress * 10) * 10; if (pct !== last) { last = pct; log(`  ${pct}%`); } },
   });
   return outFile;
@@ -124,19 +147,19 @@ export async function renderOne(template, props, outFile, scale = 1) {
 
 /** Two-pass EBU R128 loudness normalisation to YouTube's -14 LUFS, video copied untouched. */
 function master(file) {
-  const has = sh('ffprobe', ['-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=index', '-of', 'csv=p=0', file]);
+  const has = sh(FFPROBE, ['-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=index', '-of', 'csv=p=0', file]);
   if (!has) return null;
   const tgt = 'I=-14:TP=-1:LRA=11';
   let info;
   try {
-    const r = require_spawn('ffmpeg', ['-hide_banner', '-nostats', '-i', file, '-vn', '-af', `loudnorm=${tgt}:print_format=json`, '-f', 'null', '-']);
+    const r = require_spawn(FFMPEG, ['-hide_banner', '-nostats', '-i', file, '-vn', '-af', `loudnorm=${tgt}:print_format=json`, '-f', 'null', '-']);
     info = JSON.parse(r.slice(r.lastIndexOf('{'), r.lastIndexOf('}') + 1));
   } catch { info = null; }
   const af = info
     ? `loudnorm=${tgt}:measured_I=${info.input_i}:measured_TP=${info.input_tp}:measured_LRA=${info.input_lra}:measured_thresh=${info.input_thresh}:offset=${info.target_offset}:linear=true,aresample=48000`
     : `loudnorm=${tgt},aresample=48000`;
   const tmp = file.replace(/\.mp4$/, '.m.mp4');
-  sh('ffmpeg', ['-y', '-v', 'error', '-i', file, '-map', '0:v', '-map', '0:a', '-c:v', 'copy', '-af', af, '-c:a', 'aac', '-b:a', '320k', '-ar', '48000', '-movflags', '+faststart', tmp]);
+  sh(FFMPEG, ['-y', '-v', 'error', '-i', file, '-map', '0:v', '-map', '0:a', '-c:v', 'copy', '-af', af, '-c:a', 'aac', '-b:a', '320k', '-ar', '48000', '-movflags', '+faststart', tmp]);
   fs.renameSync(tmp, file);
   log(`mastered: input ${info?.input_i ?? '?'} LUFS → -14 LUFS`);
   return info;
@@ -156,8 +179,8 @@ async function sideFiles(template, props, file) {
     const ch = m.chapters(ts, (s) => s.label || '');
     if (ch.split('\n').length >= 3) { fs.writeFileSync(base + '.chapters.txt', ch); out.chapters = base + '.chapters.txt'; }
   }
-  if (sh('ffprobe', ['-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=index', '-of', 'csv=p=0', file])) {
-    sh('ffmpeg', ['-y', '-v', 'error', '-i', file, '-vn', '-c:a', 'libmp3lame', '-b:a', '192k', base + '.mp3']);
+  if (sh(FFPROBE, ['-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=index', '-of', 'csv=p=0', file])) {
+    sh(FFMPEG, ['-y', '-v', 'error', '-i', file, '-vn', '-c:a', 'libmp3lame', '-b:a', '192k', base + '.mp3']);
     out.mp3 = base + '.mp3';
   }
   return out;

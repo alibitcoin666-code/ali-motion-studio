@@ -3,3 +3,4 @@ export {timeScript, scriptFrames} from './templates/ScriptVideo';
 export {allWords, captionPages, toSrt, chapters, missingClips, clipKey} from './timeline';
 export {KIND_FA} from './templates/scenes';
 export {TEMPLATES} from './registry';
+export {lessonToScript, curiosityToScript} from '../course/parse';

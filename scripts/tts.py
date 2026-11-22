@@ -11,6 +11,9 @@ loudness-normalised to -16 LUFS (the final mix is mastered to -14 LUFS for YouTu
 """
 import asyncio, json, os, subprocess, sys, tempfile
 
+FFMPEG = os.environ.get("FFMPEG", "ffmpeg")
+FFPROBE = os.environ.get("FFPROBE", "ffprobe")
+
 import edge_tts
 
 VOICES = {"farid": "fa-IR-FaridNeural", "dilara": "fa-IR-DilaraNeural"}
@@ -21,7 +24,7 @@ CHAIN = ("highpass=f=80,equalizer=f=300:t=q:w=1.2:g=-2,equalizer=f=3200:t=q:w=1.
 
 
 def probe(f):
-    out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", f],
+    out = subprocess.run([FFPROBE, "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", f],
                          capture_output=True, text=True).stdout.strip()
     return float(out or 0)
 
@@ -75,9 +78,14 @@ async def main():
             raise SystemExit(f"TTS failed for {c['key']}")
         dst = os.path.join(out_dir, c["key"] + ".mp3")
         # 60 ms lead-in so the first consonant is never clipped; trim long trailing silence
-        subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", raw, "-af",
-                        "adelay=60:all=1," + CHAIN + ",areverse,silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.15,areverse",
-                        "-c:a", "libmp3lame", "-b:a", "192k", dst], check=True)
+        full = "adelay=60:all=1," + CHAIN + ",areverse,silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.15,areverse"
+        try:
+            subprocess.run([FFMPEG, "-y", "-v", "error", "-i", raw, "-af", full, "-c:a", "libmp3lame", "-b:a", "192k", dst], check=True)
+        except subprocess.CalledProcessError:
+            # minimal ffmpeg builds (e.g. Remotion's) lack some filters → simple, still broadcast-level chain
+            print("voice chain unavailable, using loudnorm only", file=sys.stderr)
+            subprocess.run([FFMPEG, "-y", "-v", "error", "-i", raw, "-af", "adelay=60:all=1,loudnorm=I=-16:TP=-1.5",
+                            "-c:a", "libmp3lame", "-b:a", "192k", dst], check=True)
         words = attach_punct(words, c["text"])
         for w in words:
             w["t"] = round(w["t"] + 0.06, 3)
