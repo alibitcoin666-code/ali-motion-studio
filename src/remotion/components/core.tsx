@@ -142,6 +142,13 @@ export const Words: React.FC<{
   const f = useCurrentFrame();
   const {fps} = useVideoConfig();
   const words = tokenizeMarked(text);
+  // keep highlighted phrases (up to 3 words) together on one line
+  const groups: {w: {t: string; hi: boolean}; i: number}[][] = [];
+  words.forEach((w, i) => {
+    const last = groups[groups.length - 1];
+    if (w.hi && last && last[0].w.hi && last.length < 3 && words[i - 1]?.hi) last.push({w, i});
+    else groups.push([{w, i}]);
+  });
   return (
     <div
       dir="rtl"
@@ -155,7 +162,8 @@ export const Words: React.FC<{
         fontFamily: font ?? FONT_FA,
       }}
     >
-      {words.map((w, i) => {
+      {groups.map((g, gi) => {
+        const renderWord = (w: {t: string; hi: boolean}, i: number) => {
         const isHi = w.hi;
         const clean = w.t;
         const s = spring({frame: f - start - i * stagger, fps, config: mode === 'slam' ? {damping: 11, mass: 0.6, stiffness: 180} : {damping: 16, mass: 0.7}});
@@ -177,6 +185,13 @@ export const Words: React.FC<{
             }}
           >
             {clean}
+          </span>
+        );
+        };
+        if (g.length === 1) return renderWord(g[0].w, g[0].i);
+        return (
+          <span key={`g${gi}`} style={{display: 'inline-flex', flexWrap: 'nowrap', columnGap: size * 0.28, direction: 'rtl'}}>
+            {g.map((x) => renderWord(x.w, x.i))}
           </span>
         );
       })}
