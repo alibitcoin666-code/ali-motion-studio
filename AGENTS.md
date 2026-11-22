@@ -26,3 +26,6 @@ Ali Motion Studio (v3) is a free, browser-first app for making Persian (RTL) pia
 - Nothing publishes to YouTube or public Telegram channels automatically. Exports are files for the human to upload. `@Alibaghbani1hand` is frozen.
 - Output: H.264 yuv420p, CRF 18, AAC 320k, 30 fps, −14 LUFS (YouTube).
 - Audio assets: piano = Salamander Grand (CC-BY, credit Alexander Holm); beds and SFX are synthesised by `scripts/audio/build-audio.mjs` (no copyright).
+
+## CLI (`ams`)
+`node scripts/ams.mjs <doctor|templates|sample|course|still|render|cloud|status|qa>`. The Muse installer is at `muse/install.sh` and the skill at `muse/skill/ali-motion-studio/`. Env vars: FFMPEG, FFPROBE, PYTHON, AMS_BROWSER, AMS_CONCURRENCY, AMS_DRAFT, AMS_API.
