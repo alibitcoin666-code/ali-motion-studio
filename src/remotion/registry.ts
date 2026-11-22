@@ -7,8 +7,11 @@ import {BrandIntro} from './templates/BrandIntro';
 import {ChordScale} from './templates/ChordScale';
 import {MusicRelease} from './templates/MusicRelease';
 import {EndScreen} from './templates/EndScreen';
+import {buildScenes, totalFrames} from '../narration/narration';
+import {Whiteboard} from './script/Whiteboard';
+import {Stickman} from './script/Stickman';
 
-export type FieldType = 'text' | 'textarea' | 'number' | 'select' | 'notes' | 'lines' | 'steps' | 'url';
+export type FieldType = 'text' | 'textarea' | 'number' | 'select' | 'notes' | 'lines' | 'steps' | 'url' | 'scenes';
 
 export interface Field {
   key: string;
@@ -42,7 +45,60 @@ const MODE_OPTIONS = [
 
 const sec = (p: any, d: number) => Math.round(Math.max(3, Math.min(120, Number(p.durationSec) || d)) * FPS);
 
+
+const SAMPLE_SCENES = [
+  {kind: 'title', title: 'اولین قرار با پیانو', text: 'نشستن درست، شناخت کیبورد و پیدا کردن دوی میانی', narration: 'سلام و به پیانووا خوش آمدی. [مکث ۰٫۵ ثانیه] امروز جلسهٔ اول است؛ فقط می‌نشینیم، نگاه می‌کنیم و با پیانو دوست می‌شویم.', sec: 0},
+  {kind: 'list', title: 'نشستن درست', items: ['پشت صاف ولی آزاد', 'ساعد تقریباً موازی زمین', 'پاها راحت روی زمین'], narration: 'اول نشستن. پشتت صاف باشد اما سفت نه. [مکث ۰٫۵ ثانیه] ارتفاع نیمکت را طوری تنظیم کن که ساعدت تقریباً موازی زمین شود و پاهایت راحت به زمین برسند.', sec: 0},
+  {kind: 'keyboard', title: 'دوی میانی کجاست؟', notes: 'C4', fingers: '2', text: 'سفیدِ سمت چپِ دو کلید سیاهِ جفت = «دو»', narration: 'حالا ستارهٔ امروز، دوی میانی. [مکث ۰٫۵ ثانیه] وسط کیبورد دو کلید سیاه کنار هم پیدا کن. کلید سفیدِ درست سمت چپ آن‌ها «دو» است.', sec: 0},
+  {kind: 'quiz', title: 'کوییز', text: 'سفیدِ سمت چپِ دو سیاهِ جفت چه نام دارد؟', items: ['دو', 'ر', 'فا', 'سل'], answer: 0, narration: 'یک سؤال کوتاه: کلید سفید سمت چپ دو کلید سیاه جفت چه نام دارد؟ [مکث ۱ ثانیه] درست است؛ «دو».', sec: 0},
+  {kind: 'outro', title: 'جمع‌بندی امروز', items: ['نشستن صحیح', 'آشنایی با کلیدها', 'پیدا کردن دوی میانی'], narration: 'جمع‌بندی: نشستن صحیح، آشنایی با کلیدها و پیدا کردن دوی میانی. من علی باغبانی هستم؛ اینجا پیانووا. تا جلسهٔ بعد.', sec: 0},
+];
+
+const scriptFields = (extra: Field[] = []): Field[] => [
+  {key: 'episode', label: 'شماره جلسه', type: 'text'},
+  {key: 'courseTitle', label: 'نام دوره', type: 'text'},
+  {key: 'title', label: 'عنوان ویدیو', type: 'text'},
+  {key: 'subtitle', label: 'زیرعنوان', type: 'text'},
+  {key: 'keyPoint', label: 'نکتهٔ کلیدی (روی یادداشت آبی)', type: 'text'},
+  {key: 'scenes', label: 'صحنه‌ها (هر صحنه نریشن خودش را دارد)', type: 'scenes'},
+  ...extra,
+  {key: 'cta', label: 'دعوت به اقدام', type: 'text'},
+  {key: 'handle', label: 'آیدی/سایت', type: 'text'},
+];
+
+const SCRIPT_TEMPLATES: TemplateDef[] = [
+  {
+    id: 'Whiteboard',
+    nameFa: 'تخته وایت‌برد آموزشی',
+    descFa: 'تخته سفید با قاب چوبی روی دیوار گچی، دستی که با ماژیک راست‌به‌چپ می‌نویسد، کیبورد/حامل/دست طراحی‌شده با ماژیک، تخته‌پاک‌کن بین صحنه‌ها — بازطراحی‌شده از تصویر شما',
+    category: 'آموزشی',
+    defaultFormat: '16:9',
+    component: Whiteboard,
+    inspiration: 'تصویر وایت‌برد ارسالی شما در گوگل درایو + prompt-motion: Whiteboard tutorial',
+    defaultProps: {brand: 'pianova', format: '16:9', look: 'luxe', episode: '1', courseTitle: 'پیانو از صفر', title: 'اولین قرار با پیانو', subtitle: 'نشستن و نگاه کردن', keyPoint: 'دوی میانی را پیدا کن', scenes: SAMPLE_SCENES, cta: 'اگر مفید بود، سابسکرایب کن', handle: 'alipiano.ir', ink: 'red', captions: true, voice: 'farid'},
+    fields: scriptFields([
+      {key: 'ink', label: 'رنگ ماژیک عنوان', type: 'select', options: [{value: 'red', label: 'قرمز'}, {value: 'blue', label: 'آبی'}, {value: 'green', label: 'سبز'}, {value: 'black', label: 'مشکی'}]},
+    ]),
+    duration: (p) => totalFrames(buildScenes('Whiteboard', p)),
+  },
+  {
+    id: 'Stickman',
+    nameFa: 'معلم استیکمن',
+    descFa: 'شخصیت استیکمن (کلاه سرمه‌ای، تی‌شرت پیانو) کنار تخته می‌ایستد، با چوب اشاره دقیقاً جایی را نشان می‌دهد که نوشته می‌شود، حرف می‌زند، پلک می‌زند، دست تکان می‌دهد و در کوییز فکر می‌کند',
+    category: 'آموزشی',
+    defaultFormat: '16:9',
+    component: Stickman,
+    inspiration: 'برگهٔ شخصیت استیکمن ارسالی شما در گوگل درایو',
+    defaultProps: {brand: 'pianova', format: '16:9', look: 'luxe', episode: '1', courseTitle: 'پیانو از صفر', title: 'اولین قرار با پیانو', subtitle: 'نشستن و نگاه کردن', keyPoint: 'دوی میانی را پیدا کن', scenes: SAMPLE_SCENES, cta: 'اگر مفید بود، سابسکرایب کن', handle: 'alipiano.ir', ink: 'blue', captions: true, voice: 'farid'},
+    fields: scriptFields([
+      {key: 'ink', label: 'رنگ ماژیک عنوان', type: 'select', options: [{value: 'blue', label: 'آبی'}, {value: 'red', label: 'قرمز'}, {value: 'green', label: 'سبز'}, {value: 'black', label: 'مشکی'}]},
+    ]),
+    duration: (p) => totalFrames(buildScenes('Stickman', p)),
+  },
+];
+
 export const TEMPLATES: TemplateDef[] = [
+  ...SCRIPT_TEMPLATES,
   {
     id: 'PianoLesson',
     nameFa: 'ویدیوی آموزشی پیانو',
@@ -254,5 +310,7 @@ export const getTemplate = (id: string) => TEMPLATES.find((t) => t.id === id) ??
 export const compositionMeta = (id: string, props: any) => {
   const t = getTemplate(id);
   const fmt: Format = props.format ?? t.defaultFormat;
-  return {...DIMENSIONS[fmt], fps: FPS, durationInFrames: Math.max(30, t.duration(props))};
+  // Duration always comes from the narration-aware scene timeline (see src/narration).
+  const frames = totalFrames(buildScenes(t.id, props)) || t.duration(props);
+  return {...DIMENSIONS[fmt], fps: FPS, durationInFrames: Math.max(30, frames)};
 };

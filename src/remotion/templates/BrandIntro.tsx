@@ -25,7 +25,7 @@ export const BrandIntro: React.FC<BrandIntroProps> = (p) => {
   const out = interpolate(f, [durationInFrames - 14, durationInFrames], [1, 0], clamp);
   const sweep = interpolate(f, [44, 80], [-0.3, 1.3], {...clamp, easing: Easing.inOut(Easing.cubic)});
   return (
-    <Stage p={p} watermark={false} intensity={1.3}>
+    <Stage p={p} watermark={false} intensity={1.3} tid="BrandIntro">
       <AbsoluteFill style={{justifyContent: 'center', alignItems: 'center', opacity: out}}>
         <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 34 * u}}>
         <svg width={total} height={360 * u} style={{direction: 'ltr', display: 'block'}}>

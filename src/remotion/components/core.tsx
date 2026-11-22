@@ -3,6 +3,12 @@ import {AbsoluteFill, Easing, interpolate, random, spring, useCurrentFrame, useV
 import {Audio} from '@remotion/media';
 import {BaseProps, Brand, hexA, resolveBrand} from '../theme';
 import {FONT_FA, FONT_LATIN_SERIF, useFontsReady} from '../fonts';
+import {Bokeh, GoldText, Grain, LightLeak, PhotoBackground, resolveBgImage} from './luxe';
+import {buildCaptions, buildScenes} from '../../narration/narration';
+import {Captions} from './Captions';
+
+/** Whether the luxe look is active (provided by <Stage>). */
+export const LuxeContext = React.createContext(false);
 
 /** Scale unit: 1 = 1px on a 1080px short side. */
 export const useUnit = () => {
@@ -65,21 +71,37 @@ export const Backdrop: React.FC<{brand: Brand; intensity?: number}> = ({brand, i
 };
 
 /* ---------------------------------------------------------- Stage (wrapper used by all templates) */
-export const Stage: React.FC<React.PropsWithChildren<{p: BaseProps; intensity?: number; watermark?: boolean}>> = ({
+export const Stage: React.FC<React.PropsWithChildren<{p: BaseProps; intensity?: number; watermark?: boolean; tid?: string; captionsBottom?: number; lightCaptions?: boolean; noBackdrop?: boolean}>> = ({
   p,
   children,
   intensity,
   watermark = true,
+  tid,
+  captionsBottom,
+  lightCaptions,
+  noBackdrop,
 }) => {
   useFontsReady();
   const brand = resolveBrand(p);
+  const luxe = p.look !== 'clean';
+  const bg = resolveBgImage(p.bgImage);
+  // Duck background music under the voice-over.
+  const musicVol = (p.audioVolume ?? 1) * (p.narrationUrl ? 0.3 : 1);
   return (
-    <AbsoluteFill style={{fontFamily: FONT_FA, color: brand.text, direction: 'rtl', overflow: 'hidden'}}>
-      <Backdrop brand={brand} intensity={intensity} />
-      {children}
-      {watermark && p.showWatermark !== false ? <Watermark brand={brand} /> : null}
-      {p.audioUrl ? <Audio src={p.audioUrl} volume={p.audioVolume ?? 1} /> : null}
-    </AbsoluteFill>
+    <LuxeContext.Provider value={luxe}>
+      <AbsoluteFill style={{fontFamily: FONT_FA, color: brand.text, direction: 'rtl', overflow: 'hidden'}}>
+        {noBackdrop ? null : <Backdrop brand={brand} intensity={intensity} />}
+        {bg && !noBackdrop ? <PhotoBackground src={bg} brand={brand} /> : null}
+        {luxe && !noBackdrop ? <LightLeak brand={brand} /> : null}
+        {luxe && !noBackdrop ? <Bokeh brand={brand} /> : null}
+        {children}
+        {tid && p.captions ? <Captions brand={brand} caps={buildCaptions(buildScenes(tid, p))} bottom={captionsBottom} light={lightCaptions} /> : null}
+        {watermark && p.showWatermark !== false ? <Watermark brand={brand} /> : null}
+        {luxe ? <Grain /> : null}
+        {p.audioUrl ? <Audio src={p.audioUrl} volume={musicVol} /> : null}
+        {p.narrationUrl ? <Audio src={p.narrationUrl} volume={p.narrationVolume ?? 1} /> : null}
+      </AbsoluteFill>
+    </LuxeContext.Provider>
   );
 };
 
@@ -143,6 +165,7 @@ export const Words: React.FC<{
 }> = ({text, start = 0, stagger = 4, size, color, weight = 800, font, highlight, align = 'center', lineHeight = 1.35, maxWidth, mode = 'rise'}) => {
   const f = useCurrentFrame();
   const {fps} = useVideoConfig();
+  const luxe = React.useContext(LuxeContext);
   const words = tokenizeMarked(text);
   // keep highlighted phrases (up to 3 words) together on one line
   const groups: {w: {t: string; hi: boolean}; i: number}[][] = [];
@@ -186,7 +209,7 @@ export const Words: React.FC<{
               filter: blur > 0.3 ? `blur(${blur}px)` : undefined,
             }}
           >
-            {clean}
+            {isHi && luxe && highlight ? <GoldText accent={highlight} offset={i * 25}>{clean}</GoldText> : clean}
           </span>
         );
         };

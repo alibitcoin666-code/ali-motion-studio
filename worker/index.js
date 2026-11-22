@@ -6,7 +6,9 @@
  * Bindings: JOBS (KV namespace), QUEUE_SECRET (secret), PAGES_ORIGIN (plain text)
  * No user secrets are ever stored in this file.
  */
-const TEMPLATES = ['PianoLesson', 'PianoTip', 'ChordScale', 'KineticQuote', 'BrandIntro', 'MusicRelease', 'EndScreen'];
+const TEMPLATES = ['PianoLesson', 'PianoTip', 'ChordScale', 'KineticQuote', 'BrandIntro', 'MusicRelease', 'EndScreen', 'Whiteboard', 'Stickman'];
+const VOICES = ['none', 'farid', 'dilara'];
+const REPO = 'alibitcoin666-code/ali-motion-studio';
 const MAX_FILE = 20 * 1024 * 1024;
 const JOB_TTL = 60 * 60 * 24 * 14; // 14 days
 const FILE_TTL = 60 * 60 * 24 * 3; // 3 days
@@ -41,6 +43,17 @@ async function api(req, env, url) {
   const m = req.method;
   if (m === 'OPTIONS') return new Response(null, {headers: cors});
 
+  /* ---- proxy finished renders (for Telegram / direct links, same-origin download) */
+  let rr = p.match(/^\/api\/render\/([A-Za-z0-9._-]{3,120}\.(mp4|mp3|srt))$/);
+  if (rr && (m === 'GET' || m === 'HEAD')) {
+    const r = await fetch(`https://github.com/${REPO}/releases/download/renders/${rr[1]}`, {redirect: 'follow', cf: {cacheTtl: 3600}});
+    if (!r.ok) return json({error: 'not found'}, 404);
+    const type = {mp4: 'video/mp4', mp3: 'audio/mpeg', srt: 'application/x-subrip; charset=utf-8'}[rr[2]];
+    const h = {'content-type': type, 'cache-control': 'public, max-age=3600', 'content-disposition': `inline; filename="${rr[1]}"`, ...cors};
+    const len = r.headers.get('content-length'); if (len) h['content-length'] = len;
+    return new Response(m === 'HEAD' ? null : r.body, {headers: h});
+  }
+
   if (p === '/api/health') return json({ok: true, service: 'ali-motion-studio', time: new Date().toISOString()});
 
   /* ---- uploads (audio / cover) */
@@ -70,7 +83,7 @@ async function api(req, env, url) {
     const used = +((await env.JOBS.get(rk)) || 0);
     if (used >= PER_IP_HOURLY) return json({error: 'تعداد درخواست‌ها در این ساعت زیاد است؛ کمی بعد دوباره امتحان کنید'}, 429);
     const raw = await req.text();
-    if (raw.length > 200_000) return json({error: 'داده پروژه بیش از حد بزرگ است'}, 413);
+    if (raw.length > 400_000) return json({error: 'داده پروژه بیش از حد بزرگ است'}, 413);
     let body;
     try { body = JSON.parse(raw); } catch { return json({error: 'JSON نامعتبر'}, 400); }
     if (!TEMPLATES.includes(body.template)) return json({error: 'قالب نامعتبر'}, 400);
@@ -82,7 +95,12 @@ async function api(req, env, url) {
     const id = rid(12);
     const now = Date.now();
     const title = String(body.title || `${body.template}.mp4`).replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 80);
-    const job = {id, status: 'queued', template: body.template, props: body.props, title, createdAt: now};
+    const voice = VOICES.includes(body.voice) ? body.voice : 'none';
+    const narrationPlan = Array.isArray(body.narrationPlan)
+      ? body.narrationPlan.slice(0, 300).map((c) => ({start: +c.start || 0, end: +c.end || 0, text: String(c.text || '').slice(0, 600)})).filter((c) => c.text && c.end > c.start)
+      : [];
+    const scale = [1, 4 / 3, 2].find((x) => Math.abs(x - (+body.scale || 1)) < 0.01) || 1;
+    const job = {id, status: 'queued', template: body.template, props: body.props, title, voice, narrationPlan, scale, createdAt: now};
     await env.JOBS.put(`job:${id}`, JSON.stringify(job), {expirationTtl: JOB_TTL});
     await env.JOBS.put(`q:${String(now).padStart(14, '0')}:${id}`, '1', {expirationTtl: JOB_TTL});
     await env.JOBS.put(rk, String(used + 1), {expirationTtl: 3700});
@@ -96,7 +114,7 @@ async function api(req, env, url) {
     if (!j) return json({error: 'not found'}, 404);
     let position;
     if (j.status === 'queued') position = (await queuedIds(env)).indexOf(j.id) + 1 || undefined;
-    return json({id: j.id, status: j.status, url: j.url, error: j.error, createdAt: j.createdAt, updatedAt: j.updatedAt, position});
+    return json({id: j.id, status: j.status, url: j.url, files: j.files, error: j.error, createdAt: j.createdAt, updatedAt: j.updatedAt, position});
   }
 
   /* ---- worker side (GitHub Actions) */
@@ -113,7 +131,7 @@ async function api(req, env, url) {
     if (!j) return json({error: 'not found'}, 404);
     const b = await req.json();
     if (!['rendering', 'done', 'error', 'queued'].includes(b.status)) return json({error: 'bad status'}, 400);
-    Object.assign(j, {status: b.status, url: b.url ?? j.url, error: b.error ? String(b.error).slice(0, 500) : undefined, updatedAt: Date.now()});
+    Object.assign(j, {status: b.status, url: b.url ?? j.url, files: b.files ?? j.files, error: b.error ? String(b.error).slice(0, 500) : undefined, updatedAt: Date.now()});
     await env.JOBS.put(`job:${j.id}`, JSON.stringify(j), {expirationTtl: JOB_TTL});
     if (b.status !== 'queued') {
       const list = await env.JOBS.list({prefix: 'q:'});

@@ -1,5 +1,6 @@
 import React from 'react';
 import {AbsoluteFill, interpolate, Sequence, spring, useCurrentFrame, useVideoConfig} from 'remotion';
+import {buildScenes, totalFrames} from '../../narration/narration';
 import {BaseProps, hexA, resolveBrand, toFa} from '../theme';
 import {clamp, ProgressBar, Stage, useUnit, Words} from '../components/core';
 import {FONT_FA_DISPLAY, FONT_FA_POSTER, FONT_LATIN_SERIF} from '../fonts';
@@ -70,17 +71,19 @@ export const KineticQuote: React.FC<KineticQuoteProps> = (p) => {
   const b = resolveBrand(p);
   const t = quoteTiming(p);
   const lines = (p.lines || []).filter(Boolean);
+  const sc = buildScenes('KineticQuote', p);
+  const end = sc[sc.length - 1];
   return (
-    <Stage p={p} intensity={1.2}>
+    <Stage p={p} intensity={1.2} tid="KineticQuote">
       {lines.map((l, i) => (
-        <Sequence key={i} from={i * t.line} durationInFrames={t.line} name={`Line ${i + 1}`}>
-          <Line p={p} text={l} i={i} dur={t.line} beat={t.beat} />
+        <Sequence key={i} from={sc[i].from} durationInFrames={sc[i].frames} name={`Line ${i + 1}`}>
+          <Line p={p} text={l} i={i} dur={sc[i].frames} beat={t.beat} />
         </Sequence>
       ))}
-      <Sequence from={t.n * t.line} durationInFrames={t.end} name="End">
-        <End p={p} dur={t.end} />
+      <Sequence from={end.from} durationInFrames={end.frames} name="End">
+        <End p={p} dur={end.frames} />
       </Sequence>
-      <ProgressBar brand={b} total={t.total} />
+      <ProgressBar brand={b} total={totalFrames(sc)} />
     </Stage>
   );
 };

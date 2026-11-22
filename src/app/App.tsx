@@ -3,6 +3,13 @@ import {Player, PlayerRef} from '@remotion/player';
 import {TEMPLATES, getTemplate, compositionMeta, Field} from '../remotion/registry';
 import {BRANDS, BrandId, Format} from '../remotion/theme';
 import {ensureFonts} from '../remotion/fonts';
+import {buildCaptions, buildScenes, cloudPlan} from '../narration/narration';
+import {NarrationPanel} from './NarrationPanel';
+import {ScenesEditor} from './ScenesEditor';
+import {CoursePanel} from './CoursePanel';
+import {Markdown} from './Docs';
+import guideMd from '../../docs/GUIDE_SIMPLE.md?raw';
+import growthMd from '../../docs/YOUTUBE_GROWTH.md?raw';
 
 const API = (import.meta as any).env?.VITE_API_BASE ?? '';
 const LS_KEY = 'ams.projects.v1';
@@ -23,6 +30,18 @@ const QUALITIES = [
   {v: 'medium', l: 'متوسط (سبک و سریع)', bps: 5_000_000},
 ];
 
+const RESOLUTIONS = [
+  {v: 1, l: '۱۰۸۰p (Full HD)'},
+  {v: 4 / 3, l: '۱۴۴۰p (2K) — کیفیت بهتر در یوتیوب'},
+  {v: 2, l: '۲۱۶۰p (4K) — حجم و زمان بیشتر'},
+];
+const BG_OPTIONS = [
+  {v: '', l: 'بدون عکس (گرادیان برند)'},
+  {v: 'grand-piano', l: 'پیانوی گرند لوکس (عکس شما)'},
+];
+const BLOB_KEYS = ['audioUrl', 'coverUrl', 'narrationUrl'] as const;
+type BlobKey = (typeof BLOB_KEYS)[number];
+
 const fa = (n: number | string) => String(n).replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[+d]);
 const fmtSize = (b: number) => (b > 1e6 ? `${fa((b / 1e6).toFixed(1))} مگابایت` : `${fa(Math.round(b / 1e3))} کیلوبایت`);
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
@@ -35,7 +54,9 @@ export const App: React.FC = () => {
   const last = useMemo(() => { try { return JSON.parse(localStorage.getItem(LS_LAST) || 'null'); } catch { return null; } }, []);
   const [tplId, setTplId] = useState<string>(last?.template ?? 'PianoLesson');
   const [props, setProps] = useState<Record<string, any>>(() => last?.props ?? clone(getTemplate('PianoLesson').defaultProps));
-  const [tab, setTab] = useState<'content' | 'style' | 'export'>('content');
+  const [tab, setTab] = useState<'content' | 'narration' | 'style' | 'export'>('content');
+  const [view, setView] = useState<'studio' | 'course' | 'guide' | 'growth'>(() => (location.hash.replace('#', '') as any) || 'studio');
+  const [scale, setScale] = useState(1);
   const [projects, setProjects] = useState<Project[]>(loadProjects);
   const [toast, setToast] = useState<string | null>(null);
   const [render, setRender] = useState<{state: 'idle' | 'running' | 'done' | 'error'; progress: number; url?: string; size?: number; msg?: string; ms?: number}>({state: 'idle', progress: 0});
@@ -52,7 +73,7 @@ export const App: React.FC = () => {
   useEffect(() => {
     const t = setTimeout(() => {
       const clean = {...props};
-      for (const k of ['audioUrl', 'coverUrl']) if (String(clean[k] || '').startsWith('blob:')) clean[k] = '';
+      for (const k of BLOB_KEYS) if (String(clean[k] || '').startsWith('blob:')) clean[k] = '';
       localStorage.setItem(LS_LAST, JSON.stringify({template: tplId, props: clean}));
     }, 400);
     return () => clearTimeout(t);
@@ -64,14 +85,24 @@ export const App: React.FC = () => {
 
   const pickTemplate = (id: string) => {
     const t = getTemplate(id);
-    const keep = {brand: props.brand, accentOverride: props.accentOverride, audioUrl: props.audioUrl, audioVolume: props.audioVolume};
+    const keep = {brand: props.brand, accentOverride: props.accentOverride, audioUrl: props.audioUrl, audioVolume: props.audioVolume, look: props.look, voice: props.voice};
     setTplId(id);
     setProps({...clone(t.defaultProps), ...Object.fromEntries(Object.entries(keep).filter(([, v]) => v !== undefined && v !== ''))});
     setRender({state: 'idle', progress: 0});
   };
 
   /* ---------------- files (audio / cover) */
-  const onFile = (key: 'audioUrl' | 'coverUrl') => (e: React.ChangeEvent<HTMLInputElement>) => {
+  const go = (v: typeof view) => { setView(v); history.replaceState(null, '', `#${v}`); window.scrollTo(0, 0); };
+  const makeFromCourse = (id: string, p: Record<string, any>) => {
+    const t = getTemplate(id);
+    setTplId(id);
+    setProps({...clone(t.defaultProps), ...p});
+    setRender({state: 'idle', progress: 0});
+    setTab('content');
+    go('studio');
+    flash('ویدیو از روی جلسه ساخته شد؛ نریشن هر صحنه در تب «نریشن» است');
+  };
+  const onFile = (key: BlobKey) => (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (!f) return;
     if (f.size > 20 * 1024 * 1024) { flash('حجم فایل باید کمتر از ۲۰ مگابایت باشد'); return; }
@@ -84,7 +115,7 @@ export const App: React.FC = () => {
     const name = prompt('نام پروژه:', `${tpl.nameFa} — ${new Date().toLocaleDateString('fa-IR')}`);
     if (!name) return;
     const clean = {...props};
-    for (const k of ['audioUrl', 'coverUrl']) if (String(clean[k] || '').startsWith('blob:')) clean[k] = '';
+    for (const k of BLOB_KEYS) if (String(clean[k] || '').startsWith('blob:')) clean[k] = '';
     const p: Project = {id: Math.random().toString(36).slice(2, 10), name, template: tplId, props: clean, savedAt: Date.now()};
     const next = [p, ...projects].slice(0, 50);
     setProjects(next);
@@ -144,7 +175,7 @@ export const App: React.FC = () => {
   };
 
   /* ---------------- cloud render (GitHub Actions queue via Worker) */
-  const uploadIfBlob = async (key: 'audioUrl' | 'coverUrl', p: Record<string, any>) => {
+  const uploadIfBlob = async (key: BlobKey, p: Record<string, any>) => {
     const f = files.current[key];
     if (!String(p[key] || '').startsWith('blob:') || !f) return;
     const r = await fetch(`${API}/api/files`, {method: 'POST', headers: {'content-type': f.type || 'application/octet-stream'}, body: f});
@@ -157,7 +188,10 @@ export const App: React.FC = () => {
       const p = clone(props);
       await uploadIfBlob('audioUrl', p);
       await uploadIfBlob('coverUrl', p);
-      const r = await fetch(`${API}/api/jobs`, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({template: tplId, props: p, title: fileName})});
+      await uploadIfBlob('narrationUrl', p);
+      const voice = p.narrationUrl ? 'none' : p.voice ?? (['Whiteboard', 'Stickman'].includes(tplId) ? 'farid' : 'none');
+      const narrationPlan = voice === 'none' ? [] : cloudPlan(buildCaptions(buildScenes(tplId, p)));
+      const r = await fetch(`${API}/api/jobs`, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({template: tplId, props: p, title: fileName, voice, narrationPlan, scale})});
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || 'خطا در ثبت درخواست');
       setJobs((js) => [{id: j.id, status: 'queued', createdAt: Date.now()}, ...js]);
@@ -187,7 +221,12 @@ export const App: React.FC = () => {
             <small>Ali Motion Studio · ساخت موشن‌گرافیک فارسی برای یوتیوب</small>
           </div>
         </div>
-        <div className="brands" role="tablist" aria-label="برند">
+        <nav className="nav">
+          {([['studio', 'استودیو'], ['course', 'دوره و تقویم'], ['guide', 'راهنمای ساده'], ['growth', 'رشد کانال']] as const).map(([v, l]) => (
+            <button key={v} className={view === v ? 'on' : ''} onClick={() => go(v)}>{l}</button>
+          ))}
+        </nav>
+        <div className="brands" role="tablist" aria-label="برند" style={{display: view === 'studio' ? undefined : 'none'}}>
           {(Object.keys(BRANDS) as BrandId[]).map((id) => (
             <button key={id} className={props.brand === id ? 'on' : ''} onClick={() => set('brand', id)} style={{['--c' as any]: BRANDS[id].accent}}>
               <i />{BRANDS[id].nameFa}
@@ -196,13 +235,16 @@ export const App: React.FC = () => {
         </div>
       </header>
 
-      <main className="grid">
+      {view === 'course' && <main className="page"><CoursePanel onMake={makeFromCourse} flash={flash} /></main>}
+      {view === 'guide' && <main className="page doc"><Markdown src={guideMd} /></main>}
+      {view === 'growth' && <main className="page doc"><Markdown src={growthMd} /></main>}
+      <main className="grid" style={{display: view === 'studio' ? undefined : 'none'}}>
         {/* -------- template gallery */}
         <aside className="panel gallery">
           <h3>قالب‌های ثابت</h3>
           {TEMPLATES.map((t) => (
             <button key={t.id} className={`tcard ${t.id === tplId ? 'on' : ''}`} onClick={() => pickTemplate(t.id)}>
-              <span className="cat">{t.category} · {t.defaultFormat === '16:9' ? 'افقی' : 'عمودی'}</span>
+              <span className="cat">{t.category} · {t.defaultFormat === '16:9' ? 'افقی' : 'عمودی'}{['Whiteboard', 'Stickman'].includes(t.id) ? ' · جدید' : ''}</span>
               <b>{t.nameFa}</b>
               <small>{t.descFa}</small>
             </button>
@@ -249,6 +291,7 @@ export const App: React.FC = () => {
         <aside className="panel editor">
           <div className="tabs">
             <button className={tab === 'content' ? 'on' : ''} onClick={() => setTab('content')}>محتوا</button>
+            <button className={tab === 'narration' ? 'on' : ''} onClick={() => setTab('narration')}>نریشن</button>
             <button className={tab === 'style' ? 'on' : ''} onClick={() => setTab('style')}>ظاهر و صدا</button>
             <button className={tab === 'export' ? 'on' : ''} onClick={() => setTab('export')}>خروجی</button>
           </div>
@@ -260,8 +303,23 @@ export const App: React.FC = () => {
             </div>
           )}
 
+          {tab === 'narration' && <NarrationPanel tid={tplId} props={props} set={set} onAudio={onFile('narrationUrl')} flash={flash} />}
+
           {tab === 'style' && (
             <div className="form">
+              <label>سبک ظاهری</label>
+              <div className="seg">
+                <button className={props.look !== 'clean' ? 'on' : ''} onClick={() => set('look', 'luxe')}>لوکس (طلایی، نور، بوکه)</button>
+                <button className={props.look === 'clean' ? 'on' : ''} onClick={() => set('look', 'clean')}>ساده و سبک</button>
+              </div>
+              {!['Whiteboard', 'Stickman'].includes(tplId) && (
+                <>
+                  <label>عکس پس‌زمینه</label>
+                  <select value={props.bgImage || ''} onChange={(e) => set('bgImage', e.target.value)}>
+                    {BG_OPTIONS.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}
+                  </select>
+                </>
+              )}
               <label>قطع ویدیو</label>
               <div className="seg">
                 {FORMATS.map((x) => <button key={x.v} className={props.format === x.v ? 'on' : ''} onClick={() => set('format', x.v)} title={x.hint}>{x.l}</button>)}
@@ -311,6 +369,11 @@ export const App: React.FC = () => {
               {render.state === 'error' && <p className="err">خطا: {render.msg}<br />اگر مرورگر یا سیستم ضعیف است، از «رندر ابری» استفاده کنید.</p>}
 
               <hr />
+              <label>وضوح رندر ابری</label>
+              <select value={scale} onChange={(e) => setScale(+e.target.value)}>
+                {RESOLUTIONS.map((r) => <option key={r.v} value={r.v}>{r.l}</option>)}
+              </select>
+              <p className="hint">رندر ابری صدای گوینده ({props.voice === 'none' ? 'خاموش' : props.voice === 'dilara' ? 'دلارا' : 'فرید'}) را می‌سازد، با زمان‌بندی زیرنویس هم‌زمان می‌کند و فایل‌های MP3 و SRT را هم کنار ویدیو می‌گذارد. رندر مرورگر فقط تصویر و موسیقی/فایل صدای آپلودشده را دارد.</p>
               <button className="secondary" onClick={cloudRender}>رندر ابری رایگان (بدون فشار به سیستم)</button>
               <p className="hint">ویدیو روی سرورهای GitHub با Chrome و FFmpeg رندر می‌شود (CRF ۱۸، کیفیت استودیویی). معمولاً ۵ تا ۱۵ دقیقه طول می‌کشد؛ می‌توانید صفحه را ببندید و بعداً برگردید.</p>
               {jobs.length > 0 && (
@@ -320,7 +383,11 @@ export const App: React.FC = () => {
                     <div key={j.id} className={`job ${j.status}`}>
                       <span>#{j.id.slice(0, 6)}</span>
                       <span>{({queued: 'در صف', rendering: 'در حال رندر', done: 'آماده', error: 'خطا'} as any)[j.status] ?? j.status}{j.position ? ` (نفر ${fa(j.position)})` : ''}</span>
-                      {j.url ? <a href={j.url} target="_blank" rel="noreferrer">دانلود</a> : j.error ? <small title={j.error}>جزئیات</small> : <span className="spin" />}
+                      {j.url ? <span className="row">
+                        <a href={j.url} target="_blank" rel="noreferrer">ویدیو</a>
+                        {(j as any).files?.mp3 && <a href={(j as any).files.mp3} target="_blank" rel="noreferrer">صدا</a>}
+                        {(j as any).files?.srt && <a href={(j as any).files.srt} target="_blank" rel="noreferrer">زیرنویس</a>}
+                      </span> : j.error ? <small title={j.error}>جزئیات</small> : <span className="spin" />}
                     </div>
                   ))}
                   <button className="ghost sm" onClick={() => setJobs((js) => js.filter((j) => j.status !== 'done' && j.status !== 'error'))}>پاک‌کردن تمام‌شده‌ها</button>
@@ -340,7 +407,7 @@ export const App: React.FC = () => {
       </main>
 
       <footer>
-        خروجی‌ها فقط دانلود می‌شوند و هیچ‌چیز به‌صورت خودکار منتشر نمی‌شود. کانال <bdi>@Alibaghbani1hand</bdi> تا تکمیل OAC در حالت توقف است.
+        متن‌باز (MIT) · <a href="https://github.com/alibitcoin666-code/ali-motion-studio" target="_blank" rel="noreferrer">کد در گیت‌هاب</a> · خروجی‌ها فقط دانلود می‌شوند و هیچ‌چیز به‌صورت خودکار منتشر نمی‌شود. کانال <bdi>@Alibaghbani1hand</bdi> تا تکمیل OAC در حالت توقف است.
         <span> · ساخته‌شده با Remotion (لایسنس رایگان فردی) و فونت‌های وزیرمتن، استعداد و لاله‌زار</span>
       </footer>
       {toast && <div className="toast">{toast}</div>}
@@ -349,7 +416,8 @@ export const App: React.FC = () => {
 };
 
 /* ================================================================= field editor */
-const FieldEditor: React.FC<{f: Field; value: any; onChange: (v: any) => void; onFile: (k: 'audioUrl' | 'coverUrl') => (e: React.ChangeEvent<HTMLInputElement>) => void}> = ({f, value, onChange, onFile}) => {
+const FieldEditor: React.FC<{f: Field; value: any; onChange: (v: any) => void; onFile: (k: BlobKey) => (e: React.ChangeEvent<HTMLInputElement>) => void}> = ({f, value, onChange, onFile}) => {
+  if (f.type === 'scenes') return <ScenesEditor value={value || []} onChange={onChange} label={f.label} />;
   if (f.type === 'steps') return <StepsEditor value={value || []} onChange={onChange} label={f.label} />;
   return (
     <div className="field">

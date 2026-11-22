@@ -29,7 +29,7 @@ export const EndScreen: React.FC<EndScreenProps> = (p) => {
     </div>
   );
   return (
-    <Stage p={p}>
+    <Stage p={p} tid="EndScreen">
       <AbsoluteFill style={{justifyContent: 'center', alignItems: 'center', flexDirection: 'column', gap: 60 * u, padding: 80 * u}}>
         <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 * u}}>
           <Words text={p.message} size={(vertical ? 76 : 80) * u} color={b.text} highlight={b.accent} weight={900} font={FONT_FA_DISPLAY} start={2} maxWidth={1500 * u} />

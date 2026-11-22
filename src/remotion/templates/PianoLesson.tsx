@@ -5,6 +5,7 @@ import {Badge, clamp, ProgressBar, Rule, Stage, SubscribeCTA, useEnvelope, useUn
 import {Keyboard, PlayMode} from '../components/Keyboard';
 import {parseFingers, parseNotes} from '../components/music';
 import {FONT_FA_DISPLAY, FONT_LATIN_SERIF} from '../fonts';
+import {buildScenes, totalFrames} from '../../narration/narration';
 
 export interface LessonStep {
   title: string;
@@ -147,26 +148,30 @@ export const Outro: React.FC<{p: BaseProps & {cta: string; handle: string}; dur:
 
 export const PianoLesson: React.FC<PianoLessonProps> = (p) => {
   const b = resolveBrand(p);
-  const t = lessonTiming(p);
+  const sc = buildScenes('PianoLesson', p);
+  const steps = p.steps || [];
+  const intro = sc[0];
+  const summary = sc[sc.length - 2];
+  const outro = sc[sc.length - 1];
   return (
-    <Stage p={p}>
-      <Sequence durationInFrames={t.intro} name="Intro">
-        <Intro p={p} dur={t.intro} />
+    <Stage p={p} tid="PianoLesson">
+      <Sequence durationInFrames={intro.frames} name="Intro">
+        <Intro p={p} dur={intro.frames} />
       </Sequence>
-      {(p.steps || []).map((s, i) => (
-        <Sequence key={i} from={t.intro + i * t.step} durationInFrames={t.step} name={`Step ${i + 1}`}>
-          <StepScene p={p} s={s} i={i} dur={t.step} />
+      {steps.map((s, i) => (
+        <Sequence key={i} from={sc[i + 1].from} durationInFrames={sc[i + 1].frames} name={`Step ${i + 1}`}>
+          <StepScene p={p} s={s} i={i} dur={sc[i + 1].frames} />
         </Sequence>
       ))}
-      <Sequence from={t.intro + t.n * t.step} durationInFrames={t.summary} name="Summary">
-        <Summary p={p} dur={t.summary} />
+      <Sequence from={summary.from} durationInFrames={summary.frames} name="Summary">
+        <Summary p={p} dur={summary.frames} />
       </Sequence>
-      <Sequence from={t.intro + t.n * t.step + t.summary} durationInFrames={t.outro} name="Outro">
-        <Outro p={p} dur={t.outro} />
+      <Sequence from={outro.from} durationInFrames={outro.frames} name="Outro">
+        <Outro p={p} dur={outro.frames} />
       </Sequence>
-      <Wipe brand={b} at={t.intro - 8} />
-      <Wipe brand={b} at={t.intro + t.n * t.step - 8} />
-      <ProgressBar brand={b} total={t.total} />
+      <Wipe brand={b} at={intro.frames - 8} />
+      <Wipe brand={b} at={summary.from - 8} />
+      <ProgressBar brand={b} total={totalFrames(sc)} />
     </Stage>
   );
 };

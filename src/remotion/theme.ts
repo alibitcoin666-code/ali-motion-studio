@@ -77,6 +77,17 @@ export interface BaseProps {
   audioUrl?: string;
   audioVolume?: number;
   showWatermark?: boolean;
+  /** 'luxe' (default) adds gold metallic text, bokeh, light leaks and grain. */
+  look?: 'luxe' | 'clean';
+  /** Background photo: '' / 'none', 'grand-piano', or any image URL. */
+  bgImage?: string;
+  /** Narration voice-over audio (uploaded file or TTS from the cloud render). */
+  narrationUrl?: string;
+  narrationVolume?: number;
+  /** Burn synced narration subtitles into the video. */
+  captions?: boolean;
+  /** Per-scene narration overrides (index = scene index from the narration plan). */
+  narration?: string[];
 }
 
 export const resolveBrand = (p: BaseProps): Brand => {

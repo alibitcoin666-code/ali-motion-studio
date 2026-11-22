@@ -6,6 +6,7 @@ import {Keyboard, PlayMode} from '../components/Keyboard';
 import {parseFingers, parseNotes} from '../components/music';
 import {FONT_FA_DISPLAY, FONT_FA_POSTER} from '../fonts';
 import {Outro} from './PianoLesson';
+import {buildScenes, totalFrames} from '../../narration/narration';
 
 export interface PianoTipProps extends BaseProps {
   tipNumber: string;
@@ -128,7 +129,8 @@ const Takeaway: React.FC<{p: PianoTipProps; dur: number}> = ({p, dur}) => {
 
 export const PianoTip: React.FC<PianoTipProps> = (p) => {
   const b = resolveBrand(p);
-  const t = tipTiming();
+  const sc = buildScenes('PianoTip', p);
+  const t = {hook: sc[0].frames, compare: sc[1].frames, demo: sc[2].frames, take: sc[3].frames, outro: sc[4].frames, total: totalFrames(sc)};
   let at = 0;
   const seq = (dur: number, node: React.ReactNode, name: string) => {
     const from = at;
@@ -140,7 +142,7 @@ export const PianoTip: React.FC<PianoTipProps> = (p) => {
     );
   };
   return (
-    <Stage p={p}>
+    <Stage p={p} tid="PianoTip">
       {seq(t.hook, <Hook p={p} dur={t.hook} />, 'Hook')}
       {seq(t.compare, <Compare p={p} dur={t.compare} />, 'Compare')}
       {seq(t.demo, <Demo p={p} dur={t.demo} />, 'Demo')}

@@ -29,7 +29,7 @@ export const ChordScale: React.FC<ChordScaleProps> = (p) => {
   const playStart = 40;
   const step = Math.max(8, Math.floor((durationInFrames * 0.55) / Math.max(1, notes.length)));
   return (
-    <Stage p={p}>
+    <Stage p={p} tid="ChordScale">
       <AbsoluteFill style={{opacity: out, padding: `${(vertical ? 170 : 50) * u}px ${80 * u}px`, display: 'flex', flexDirection: 'column', justifyContent: 'space-around', alignItems: 'center'}}>
         <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20 * u}}>
           <Badge brand={b} text={p.kind} size={32 * u} />

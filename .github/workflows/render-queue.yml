@@ -55,6 +55,10 @@ jobs:
         if: steps.q.outputs.count != '0'
         run: npm ci --no-audit --no-fund
 
+      - name: Install narration voice (edge-tts)
+        if: steps.q.outputs.count != '0'
+        run: pip install --quiet edge-tts && (command -v ffmpeg || sudo apt-get install -y -qq ffmpeg)
+
       - name: Render queued jobs
         if: steps.q.outputs.count != '0' && inputs.job == ''
         run: node scripts/render-job.mjs --queue

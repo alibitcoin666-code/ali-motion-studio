@@ -68,7 +68,7 @@ export const MusicRelease: React.FC<MusicReleaseProps> = (p) => {
     </div>
   );
   return (
-    <Stage p={p} intensity={1.1}>
+    <Stage p={p} intensity={1.1} tid="MusicRelease">
       <AbsoluteFill style={{opacity: out, display: 'flex', flexDirection: vertical ? 'column' : 'row', justifyContent: 'center', alignItems: 'center', gap: (vertical ? 70 : 110) * u, padding: 80 * u, paddingBottom: (vertical ? 420 : 300) * u}}>
         <div style={{position: 'relative', width: coverSize * 1.45, height: coverSize, opacity: coverIn, transform: `scale(${interpolate(coverIn, [0, 1], [0.8, 1])})`}}>
           {/* vinyl */}
