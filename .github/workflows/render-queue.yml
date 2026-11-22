@@ -1,0 +1,64 @@
+name: Cloud render queue
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'   # GitHub may delay scheduled runs by a few minutes
+  workflow_dispatch:
+    inputs:
+      job:
+        description: 'Optional: {"template":"PianoTip","props":{...}} — render directly without the queue'
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: render-queue
+  cancel-in-progress: false
+
+env:
+  API_BASE: https://ali-motion-studio.ali-bitcoin666.workers.dev
+  QUEUE_SECRET: ${{ secrets.QUEUE_SECRET }}
+  GH_TOKEN: ${{ github.token }}
+  MANUAL_JOB: ${{ inputs.job }}
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check queue (cheap)
+        id: q
+        run: |
+          if [ -n "$MANUAL_JOB" ]; then echo "count=1" >> "$GITHUB_OUTPUT"; exit 0; fi
+          n=$(curl -fsS -H "authorization: Bearer $QUEUE_SECRET" "$API_BASE/api/queue?limit=1" | jq '.jobs | length' || echo 0)
+          echo "queued: $n"
+          echo "count=$n" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        if: steps.q.outputs.count != '0'
+
+      - uses: actions/setup-node@v4
+        if: steps.q.outputs.count != '0'
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Cache Remotion browser
+        if: steps.q.outputs.count != '0'
+        uses: actions/cache@v4
+        with:
+          path: node_modules/.remotion
+          key: remotion-browser-${{ runner.os }}-4.0.545
+
+      - name: Install
+        if: steps.q.outputs.count != '0'
+        run: npm ci --no-audit --no-fund
+
+      - name: Render queued jobs
+        if: steps.q.outputs.count != '0' && inputs.job == ''
+        run: node scripts/render-job.mjs --queue
+
+      - name: Render manual job
+        if: inputs.job != ''
+        run: node scripts/render-job.mjs --job "$MANUAL_JOB"
