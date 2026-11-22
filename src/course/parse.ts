@@ -4,7 +4,7 @@
  * motion/narration scripts, quizzes, curiosity & Friday posts and the publishing calendar.
  * Format reference: docs/COURSE_ZIP_FORMAT.md
  */
-import type {ScriptScene} from '../remotion/script/types';
+import type {LessonScene} from '../v3/templates/scenes';
 
 export interface Segment {
   from: number; // seconds
@@ -321,106 +321,77 @@ const firstSentences = (s: string, max = 130) => {
 export interface LessonVideoProps {
   episode: string;
   courseTitle: string;
-  title: string;
-  subtitle: string;
-  keyPoint: string;
-  scenes: ScriptScene[];
-  cta: string;
-  handle: string;
+  scenes: LessonScene[];
+  variant: 'lesson' | 'tip';
 }
 
-/** Turn a lesson into Whiteboard / Stickman props: one scene per narration segment + quiz. */
+const short = (s: string, n = 46) => { const t = stripEmoji(s || '').replace(/\s+/g, ' ').trim(); return t.length > n ? t.slice(0, n).replace(/\s+\S*$/, '') + '…' : t; };
+
+/** Turn a course lesson into a LessonPro script: hook + one scene per narration segment + quiz + recap + outro. */
 export const lessonToScript = (l: Lesson, course?: Pick<Course, 'title' | 'site'>): LessonVideoProps => {
   const card = l.card || {};
   const hero = card.hero as string | undefined;
-  const scenes: ScriptScene[] = [];
+  const scenes: LessonScene[] = [];
   let heroUsed = false;
+  const key = stripEmoji(card.key_point || '');
+  scenes.push({kind: 'hook', label: 'شروع', title: key ? `*${short(key, 40)}*` : `امروز: *${short(l.title, 30)}*`, say: key ? short(key, 120) : ''});
   l.narration.forEach((seg, i) => {
     const rows = l.motion.filter((r) => r.to > seg.from && r.from < seg.to);
-    const onScreen = rows.map((r) => r.text).filter(Boolean);
+    const onScreen = rows.map((r) => stripEmoji(r.text)).filter(Boolean);
     const first = i === 0;
     const last = i === l.narration.length - 1;
     const t = seg.text;
-    const sec = Math.max(0, seg.to - seg.from);
-    if (first) {
-      scenes.push({kind: 'title', title: l.title, text: card.subtitle || l.goal, narration: t, sec});
-      return;
-    }
+    const heading = (onScreen[0] || '').split('|')[0].trim() || firstSentences(t, 40);
+    if (first) { scenes.push({kind: 'title', label: 'معرفی', title: `*${l.title}*`, text: short(card.subtitle || l.goal, 80), say: t}); return; }
     if (last || /^\s*جمع‌بندی/.test(t)) {
       const sum = t.match(/جمع‌بندی\s*[:：]\s*([^.]+)/)?.[1] ?? '';
       const items = sum.split(/،|\sو\s/).map((x) => x.trim()).filter(Boolean).slice(0, 4);
-      scenes.push({kind: 'outro', title: 'جمع‌بندی امروز', items: items.length ? items : onScreen.slice(0, 3), narration: t, sec});
+      scenes.push({kind: 'recap', label: 'جمع‌بندی', title: 'جمع‌بندی *امروز*', items: items.length ? items : onScreen.slice(0, 3), say: t});
       return;
     }
     if (/^\s*تمرین/.test(t)) {
-      scenes.push({kind: 'exercise', title: 'تمرین امروز', text: stripEmoji(l.exercise) || firstSentences(t), items: l.success ? [`معیار موفقیت: ${stripEmoji(l.success)}`] : [], narration: t, sec});
+      const steps = (stripEmoji(l.exercise) || firstSentences(t)).split(/(?<=[.!؟])\s+|\n|[0-9۰-۹]+[).]/).map((x) => x.trim()).filter((x) => x.length > 3).slice(0, 4);
+      scenes.push({kind: 'steps', label: 'تمرین', title: 'تمرین *امروز*', items: steps.length ? steps : [firstSentences(t, 60)], say: t});
       return;
     }
-    const heading = stripEmoji(onScreen[0] || '').split('|')[0].trim() || firstSentences(t, 40);
     if (!heroUsed && hero === 'keyboard' && (/کلید|دو|نت|انگشت/.test(t) || i >= 2)) {
       heroUsed = true;
-      const notes = (card.highlights || [0]).map(highlightToNote).join(' ');
-      scenes.push({kind: 'keyboard', title: heading, notes, text: stripEmoji(card.body || firstSentences(t, 90)), narration: t, sec});
+      scenes.push({kind: 'keyboard', label: short(heading, 24), title: heading, notes: (card.highlights || [0]).map(highlightToNote).join(' '), text: short(card.body || firstSentences(t, 90), 70), say: t});
       return;
     }
     if (!heroUsed && hero === 'staff' && (/حامل|خط|نت/.test(t) || i >= 2)) {
       heroUsed = true;
-      const staff = (card.notes || []).map((n: [number, string]) => `${posToNote(n[0])}:${(n[1] || '•').replace(/\s+/g, '‌')}`).join(' ');
-      scenes.push({kind: 'staff', title: heading, staff, text: stripEmoji(card.body || firstSentences(t, 90)), narration: t, sec});
+      scenes.push({kind: 'staff', label: short(heading, 24), title: heading, notes: (card.notes || []).map((n: [number, string]) => posToNote(n[0])).join(' '), say: t});
       return;
     }
     if (!heroUsed && hero === 'hand' && (/انگشت|دست/.test(t) || i >= 2)) {
       heroUsed = true;
-      scenes.push({kind: 'hand', title: heading, hand: card.hand_side === 'left' ? 'left' : 'right', fingers: '1 2 3 4 5', text: stripEmoji(card.body || firstSentences(t, 90)), narration: t, sec});
+      scenes.push({kind: 'keyboard', label: 'شماره انگشت‌ها', title: heading, notes: card.hand_side === 'left' ? 'C3 D3 E3 F3 G3' : 'C4 D4 E4 F4 G4', fingers: card.hand_side === 'left' ? '5 4 3 2 1' : '1 2 3 4 5', text: short(card.body || firstSentences(t, 90), 70), say: t});
       return;
     }
-    if (onScreen.length >= 3) {
-      scenes.push({kind: 'list', title: heading, items: onScreen.slice(1, 4).map((x) => stripEmoji(x)), narration: t, sec});
-      return;
-    }
-    scenes.push({kind: 'explain', title: heading, text: firstSentences(t), narration: t, sec});
+    if (onScreen.length >= 3) { scenes.push({kind: 'explain', label: short(heading, 24), title: heading, items: onScreen.slice(1, 4), say: t}); return; }
+    scenes.push({kind: 'explain', label: short(heading, 24), title: heading, text: firstSentences(t, 110), say: t});
   });
   if (l.quiz && l.quiz.options.length) {
     const q = l.quiz;
-    const fa = '۱۲۳۴';
-    const quizScene: ScriptScene = {
-      kind: 'quiz',
-      title: 'کوییز',
-      text: q.question,
-      items: q.options,
-      answer: q.answer,
-      narration: `حالا یک سؤال: ${q.question} [مکث ۱ ثانیه] چهار گزینه داریم. کمی فکر کن. [مکث ۱ ثانیه] پاسخ درست گزینهٔ ${fa[q.answer] ?? '۱'} است: ${q.options[q.answer]}.`,
-      sec: 0,
-    };
-    const oi = scenes.findIndex((s) => s.kind === 'outro');
-    if (oi >= 0) scenes.splice(oi, 0, quizScene);
-    else scenes.push(quizScene);
+    const quiz: LessonScene = {kind: 'quiz', label: 'کوییز', title: 'کوییز', text: q.question, items: q.options.slice(0, 4), answer: q.answer,
+      say: `یک سؤال: ${q.question} [مکث ۳ ثانیه] جواب درست: ${q.options[q.answer]}.`};
+    const ri = scenes.findIndex((s) => s.kind === 'recap');
+    if (ri >= 0) scenes.splice(ri, 0, quiz); else scenes.push(quiz);
   }
-  return {
-    episode: String(l.num),
-    courseTitle: course?.title || 'پیانو از صفر',
-    title: l.title,
-    subtitle: card.subtitle || l.goal,
-    keyPoint: stripEmoji(card.key_point || ''),
-    scenes,
-    cta: 'اگر مفید بود، سابسکرایب کن و تمرین امروز را کامنت کن',
-    handle: (course?.site || 'alipiano.ir').replace(/^https?:\/\//, ''),
-  };
+  scenes.push({kind: 'outro', label: 'پایان', title: 'اگر مفید بود، *سابسکرایب* کن', text: 'تمرین امروزت را در کامنت بنویس', say: 'اگر این ویدیو برایت مفید بود، سابسکرایب کن و تمرینت را در کامنت بنویس.'});
+  return {episode: String(l.num), courseTitle: course?.title || 'پیانو از صفر', scenes, variant: 'lesson'};
 };
 
 /** Short vertical video for a curiosity post. */
 export const curiosityToScript = (c: CuriosityPost, course?: Pick<Course, 'title' | 'site'>): LessonVideoProps => ({
   episode: '',
-  courseTitle: 'کنجکاوی پیانووا',
-  title: stripEmoji(c.hook),
-  subtitle: '',
-  keyPoint: stripEmoji(c.bridge).replace(/[[\]]/g, ''),
+  courseTitle: course?.title || 'کنجکاوی پیانو',
+  variant: 'tip',
   scenes: [
-    {kind: 'title', title: stripEmoji(c.hook), text: '', narration: stripEmoji(c.hook), sec: 0},
-    {kind: 'explain', title: 'واقعیت', text: firstSentences(c.fact, 150), narration: stripEmoji(c.fact), sec: 0},
-    {kind: 'explain', title: 'چرا جالب است؟', text: firstSentences(c.why, 130), narration: stripEmoji(c.why), sec: 0},
-    {kind: 'outro', title: 'تمرین مرتبط', items: [stripEmoji(c.bridge).replace(/[[\]]/g, '')], narration: `اگر دوست داری این را روی پیانو حس کنی، سری به ${stripEmoji(c.bridge).replace(/[[\]]/g, '')} بزن.`, sec: 0},
+    {kind: 'hook', title: short(c.hook, 50), say: stripEmoji(c.hook)},
+    {kind: 'explain', title: '*واقعیت*', text: firstSentences(c.fact, 120), say: stripEmoji(c.fact)},
+    {kind: 'punch', title: short(firstSentences(c.why, 70), 70), say: stripEmoji(c.why)},
+    {kind: 'cta', title: 'برای کنجکاوی بعدی *دنبال* کن', say: 'برای کنجکاوی بعدی، دنبال کن.'},
   ],
-  cta: 'برای کنجکاوی بعدی سابسکرایب کن',
-  handle: (course?.site || 'alipiano.ir').replace(/^https?:\/\//, ''),
 });

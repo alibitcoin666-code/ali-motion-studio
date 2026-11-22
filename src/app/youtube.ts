@@ -1,5 +1,8 @@
-import {BRANDS, BrandId} from '../remotion/theme';
-import {buildCaptions, buildScenes, cleanText, toChapters, toSRT, ttsPrompt, fmtClock, Scene} from '../narration/narration';
+import {BRANDS, BrandId} from '../v3/theme';
+import {getTemplate} from '../v3/registry';
+import {timeScript} from '../v3/templates/ScriptVideo';
+import {allWords, captionPages, chapters, clean, fmtDur, toSrt} from '../v3/timeline';
+import {KIND_FA, LessonScene} from '../v3/templates/scenes';
 
 export const download = (name: string, text: string, type = 'text/plain;charset=utf-8') => {
   const a = document.createElement('a');
@@ -9,55 +12,57 @@ export const download = (name: string, text: string, type = 'text/plain;charset=
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 };
 
-const titleOf = (p: any) => cleanText(p.title || p.hook || p.trackTitle || p.nameFa || p.message || (p.lines || [])[0] || '');
+const labelOf = (s: LessonScene) => s.label || KIND_FA[s.kind] || '';
+const titleOf = (p: any) => clean(p.title || (p.scenes || []).find((s: LessonScene) => s.kind === 'title')?.title || (p.scenes || [])[0]?.title || '');
+
+export const timing = (tid: string, p: any) => {
+  const t = getTemplate(tid);
+  if (!t.scripted) return null;
+  const ts = timeScript(p);
+  const lesson = (p.variant || 'lesson') === 'lesson';
+  const pages = captionPages(allWords(ts), lesson ? 42 : 30, lesson ? 2 : 1);
+  return {ts, srt: toSrt(pages), chapters: chapters(ts, labelOf), pages};
+};
 
 /** Title / description / tags / chapters ready to paste into YouTube Studio (never auto-published). */
 export const youtubePack = (tid: string, p: any) => {
   const b = BRANDS[p.brand as BrandId] ?? BRANDS.ali;
-  const scenes = buildScenes(tid, p);
-  const chapters = toChapters(scenes);
-  const t = titleOf(p);
+  const tm = timing(tid, p);
+  const t = titleOf(p) || getTemplate(tid).nameFa;
   const ep = p.episode ? `جلسهٔ ${p.episode} — ` : '';
   const course = p.courseTitle ? ` | ${p.courseTitle}` : '';
-  const title = `${ep}${t}${course} | ${b.nameFa}`.slice(0, 100);
-  const summary = scenes.map((s) => s.label).filter(Boolean).slice(0, 6).join('، ');
-  const tags = ['آموزش پیانو', 'پیانو', 'پیانو از صفر', 'آموزش پیانو مبتدی', 'نت خوانی', 'piano tutorial', 'piano lesson persian', b.nameFa, b.nameEn].filter(Boolean);
+  const short = p.format === '9:16';
+  const title = `${ep}${t}${course} | ${b.nameFa}${short ? ' #shorts' : ''}`.slice(0, 100);
+  const summary = (p.scenes || []).map(labelOf).filter(Boolean).slice(0, 7).join('، ');
+  const tags = ['آموزش پیانو', 'پیانو', 'پیانو از صفر', 'آموزش پیانو مبتدی', 'نت خوانی', 'piano tutorial', 'easy piano', b.nameFa, b.nameEn].filter(Boolean);
   const description = [
-    `${t} — ${p.subtitle ? cleanText(p.subtitle) : 'آموزش ساده و قدم‌به‌قدم'}`,
+    `${t} — آموزش ساده و قدم‌به‌قدم پیانو به فارسی`,
     '',
-    `در این ویدیو: ${summary}.`,
+    summary ? `در این ویدیو: ${summary}.` : '',
     '',
-    chapters ? `فصل‌ها:\n${chapters}` : '',
+    tm && tm.chapters.split('\n').length >= 3 && !short ? `فصل‌ها:\n${tm.chapters}` : '',
     '',
-    p.keyPoint ? `نکتهٔ کلیدی: ${cleanText(p.keyPoint)}` : '',
-    `تمرینت را در کامنت بنویس؛ جواب می‌دهم.`,
+    'تمرینت را در کامنت بنویس؛ جواب می‌دهم.',
     '',
-    `${b.nameFa} · ${p.handle || b.handle}`,
+    `${b.nameFa} · ${b.handle}`,
     '#آموزش_پیانو #پیانو #' + b.nameFa.replace(/\s+/g, '_'),
-  ]
-    .filter((x, i, a) => !(x === '' && a[i - 1] === ''))
-    .join('\n');
-  return {title, description, tags: tags.join(', '), chapters};
+  ].filter((x, i, a) => !(x === '' && a[i - 1] === '')).join('\n');
+  return {title, description, tags: tags.join(', '), chapters: tm?.chapters ?? ''};
 };
 
 export const narrationMarkdown = (tid: string, p: any) => {
   const b = BRANDS[p.brand as BrandId] ?? BRANDS.ali;
-  const scenes = buildScenes(tid, p);
-  const caps = buildCaptions(scenes);
+  const tm = timing(tid, p);
   const yt = youtubePack(tid, p);
   const lines = [
     `# نریشن ویدیو — ${titleOf(p)}`,
     '',
     `- قالب: ${tid} · برند: ${b.nameFa} · قطع: ${p.format}`,
-    `- مدت کل: ${fmtClock(scenes.reduce((a: number, s: Scene) => a + s.frames, 0))}`,
+    tm ? `- مدت کل: ${fmtDur(tm.ts.reduce((a, s) => a + s.frames, 0))}` : '',
     '',
     '## متن هر صحنه (هم‌زمان با تصویر)',
     '',
-    ...scenes.flatMap((s, i) => [`### ${i + 1}. ${s.label} — ${fmtClock(s.from)} تا ${fmtClock(s.from + s.frames)}`, '', s.text || '(بدون نریشن)', '']),
-    '---',
-    '',
-    ttsPrompt(scenes, caps, {brandName: b.nameFa, voice: p.voice, title: titleOf(p)}),
-    '',
+    ...(tm?.ts ?? []).flatMap((s, i) => [`### ${i + 1}. ${labelOf(s.scene)} — ${fmtDur(s.from)} تا ${fmtDur(s.from + s.frames)}`, '', s.scene.say || '(بدون نریشن)', '']),
     '---',
     '',
     '## بستهٔ یوتیوب',
@@ -72,5 +77,5 @@ export const narrationMarkdown = (tid: string, p: any) => {
     '',
     `**تگ‌ها:** ${yt.tags}`,
   ];
-  return {md: lines.join('\n'), srt: toSRT(caps), tts: ttsPrompt(scenes, caps, {brandName: b.nameFa, voice: p.voice, title: titleOf(p)}), yt};
+  return {md: lines.join('\n'), srt: tm?.srt ?? '', yt};
 };

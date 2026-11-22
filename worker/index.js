@@ -6,7 +6,8 @@
  * Bindings: JOBS (KV namespace), QUEUE_SECRET (secret), PAGES_ORIGIN (plain text)
  * No user secrets are ever stored in this file.
  */
-const TEMPLATES = ['PianoLesson', 'PianoTip', 'ChordScale', 'KineticQuote', 'BrandIntro', 'MusicRelease', 'EndScreen', 'Whiteboard', 'Stickman'];
+const TEMPLATES = ['LessonPro', 'TipShort', 'FallingNotes', 'ChordDay', 'KineticQuote', 'LogoIntro'];
+const SCRIPTED = ['LessonPro', 'TipShort', 'ChordDay', 'KineticQuote'];
 const VOICES = ['none', 'farid', 'dilara'];
 const REPO = 'alibitcoin666-code/ali-motion-studio';
 const MAX_FILE = 20 * 1024 * 1024;
@@ -44,11 +45,11 @@ async function api(req, env, url) {
   if (m === 'OPTIONS') return new Response(null, {headers: cors});
 
   /* ---- proxy finished renders (for Telegram / direct links, same-origin download) */
-  let rr = p.match(/^\/api\/render\/([A-Za-z0-9._-]{3,120}\.(mp4|mp3|srt))$/);
+  let rr = p.match(/^\/api\/render\/([A-Za-z0-9._-]{3,120}\.(mp4|mp3|srt|txt))$/);
   if (rr && (m === 'GET' || m === 'HEAD')) {
     const r = await fetch(`https://github.com/${REPO}/releases/download/renders/${rr[1]}`, {redirect: 'follow', cf: {cacheTtl: 3600}});
     if (!r.ok) return json({error: 'not found'}, 404);
-    const type = {mp4: 'video/mp4', mp3: 'audio/mpeg', srt: 'application/x-subrip; charset=utf-8'}[rr[2]];
+    const type = {mp4: 'video/mp4', mp3: 'audio/mpeg', srt: 'application/x-subrip; charset=utf-8', txt: 'text/plain; charset=utf-8'}[rr[2]];
     const h = {'content-type': type, 'cache-control': 'public, max-age=3600', 'content-disposition': `inline; filename="${rr[1]}"`, ...cors};
     const len = r.headers.get('content-length'); if (len) h['content-length'] = len;
     return new Response(m === 'HEAD' ? null : r.body, {headers: h});
@@ -83,24 +84,26 @@ async function api(req, env, url) {
     const used = +((await env.JOBS.get(rk)) || 0);
     if (used >= PER_IP_HOURLY) return json({error: 'تعداد درخواست‌ها در این ساعت زیاد است؛ کمی بعد دوباره امتحان کنید'}, 429);
     const raw = await req.text();
-    if (raw.length > 400_000) return json({error: 'داده پروژه بیش از حد بزرگ است'}, 413);
+    if (raw.length > 900_000) return json({error: 'داده پروژه بیش از حد بزرگ است'}, 413);
     let body;
     try { body = JSON.parse(raw); } catch { return json({error: 'JSON نامعتبر'}, 400); }
     if (!TEMPLATES.includes(body.template)) return json({error: 'قالب نامعتبر'}, 400);
     if (typeof body.props !== 'object' || !body.props) return json({error: 'props نامعتبر'}, 400);
-    for (const k of ['audioUrl', 'coverUrl']) {
-      const v = body.props[k];
-      if (v && !/^https:\/\//.test(v)) body.props[k] = '';
-    }
+    const type = body.type === 'tts' ? 'tts' : 'render';
+    if (type === 'tts' && !SCRIPTED.includes(body.template)) return json({error: 'این قالب نریشن ندارد'}, 400);
+    if (type === 'tts') body.props = {scenes: (body.props.scenes || []).slice(0, 40), voice: body.props.voice};
+    // voice packs may only reference https clip URLs (never local paths)
+    const vp = body.props.voicePack;
+    if (vp && typeof vp === 'object' && vp.clips) {
+      for (const [k, c] of Object.entries(vp.clips)) if (!c || !/^https:\/\//.test(c.src || '')) delete vp.clips[k];
+    } else if (vp) body.props.voicePack = null;
     const id = rid(12);
     const now = Date.now();
     const title = String(body.title || `${body.template}.mp4`).replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 80);
-    const voice = VOICES.includes(body.voice) ? body.voice : 'none';
-    const narrationPlan = Array.isArray(body.narrationPlan)
-      ? body.narrationPlan.slice(0, 300).map((c) => ({start: +c.start || 0, end: +c.end || 0, text: String(c.text || '').slice(0, 600)})).filter((c) => c.text && c.end > c.start)
-      : [];
+    const voice = [body.voice, body.props.voice].find((v) => VOICES.includes(v)) || 'farid';
     const scale = [1, 4 / 3, 2].find((x) => Math.abs(x - (+body.scale || 1)) < 0.01) || 1;
-    const job = {id, status: 'queued', template: body.template, props: body.props, title, voice, narrationPlan, scale, createdAt: now};
+    body.props.voice = voice;
+    const job = {id, type, status: 'queued', template: body.template, props: body.props, title, voice, scale, createdAt: now};
     await env.JOBS.put(`job:${id}`, JSON.stringify(job), {expirationTtl: JOB_TTL});
     await env.JOBS.put(`q:${String(now).padStart(14, '0')}:${id}`, '1', {expirationTtl: JOB_TTL});
     await env.JOBS.put(rk, String(used + 1), {expirationTtl: 3700});

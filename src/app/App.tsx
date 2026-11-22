@@ -1,9 +1,8 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {Player, PlayerRef} from '@remotion/player';
-import {TEMPLATES, getTemplate, compositionMeta, Field} from '../remotion/registry';
-import {BRANDS, BrandId, Format} from '../remotion/theme';
-import {ensureFonts} from '../remotion/fonts';
-import {buildCaptions, buildScenes, cloudPlan} from '../narration/narration';
+import {TEMPLATES, getTemplate, compositionMeta, Field} from '../v3/registry';
+import {BRANDS, BrandId, Format, THEMES, ThemeId, getTheme} from '../v3/theme';
+import {ensureFonts} from '../v3/fonts';
 import {NarrationPanel} from './NarrationPanel';
 import {ScenesEditor} from './ScenesEditor';
 import {CoursePanel} from './CoursePanel';
@@ -12,8 +11,8 @@ import guideMd from '../../docs/GUIDE_SIMPLE.md?raw';
 import growthMd from '../../docs/YOUTUBE_GROWTH.md?raw';
 
 const API = (import.meta as any).env?.VITE_API_BASE ?? '';
-const LS_KEY = 'ams.projects.v1';
-const LS_LAST = 'ams.last.v1';
+const LS_KEY = 'ams.projects.v3';
+const LS_LAST = 'ams.last.v3';
 
 type Project = {id: string; name: string; template: string; props: Record<string, any>; savedAt: number};
 type Job = {id: string; status: string; url?: string; error?: string; createdAt?: number; position?: number};
@@ -35,12 +34,6 @@ const RESOLUTIONS = [
   {v: 4 / 3, l: '۱۴۴۰p (2K) — کیفیت بهتر در یوتیوب'},
   {v: 2, l: '۲۱۶۰p (4K) — حجم و زمان بیشتر'},
 ];
-const BG_OPTIONS = [
-  {v: '', l: 'بدون عکس (گرادیان برند)'},
-  {v: 'grand-piano', l: 'پیانوی گرند لوکس (عکس شما)'},
-];
-const BLOB_KEYS = ['audioUrl', 'coverUrl', 'narrationUrl'] as const;
-type BlobKey = (typeof BLOB_KEYS)[number];
 
 const fa = (n: number | string) => String(n).replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[+d]);
 const fmtSize = (b: number) => (b > 1e6 ? `${fa((b / 1e6).toFixed(1))} مگابایت` : `${fa(Math.round(b / 1e3))} کیلوبایت`);
@@ -52,8 +45,9 @@ function loadProjects(): Project[] {
 
 export const App: React.FC = () => {
   const last = useMemo(() => { try { return JSON.parse(localStorage.getItem(LS_LAST) || 'null'); } catch { return null; } }, []);
-  const [tplId, setTplId] = useState<string>(last?.template ?? 'PianoLesson');
-  const [props, setProps] = useState<Record<string, any>>(() => last?.props ?? clone(getTemplate('PianoLesson').defaultProps));
+  const valid = last && TEMPLATES.some((t) => t.id === last.template);
+  const [tplId, setTplId] = useState<string>(valid ? last.template : 'LessonPro');
+  const [props, setProps] = useState<Record<string, any>>(() => (valid ? last.props : clone(getTemplate('LessonPro').defaultProps)));
   const [tab, setTab] = useState<'content' | 'narration' | 'style' | 'export'>('content');
   const [view, setView] = useState<'studio' | 'course' | 'guide' | 'growth'>(() => (location.hash.replace('#', '') as any) || 'studio');
   const [scale, setScale] = useState(1);
@@ -64,7 +58,6 @@ export const App: React.FC = () => {
   const [jobs, setJobs] = useState<Job[]>(() => { try { return JSON.parse(localStorage.getItem('ams.jobs.v1') || '[]'); } catch { return []; } });
   const abortRef = useRef<AbortController | null>(null);
   const playerRef = useRef<PlayerRef>(null);
-  const files = useRef<Record<string, File>>({});
 
   const tpl = getTemplate(tplId);
   const meta = compositionMeta(tplId, props);
@@ -73,7 +66,6 @@ export const App: React.FC = () => {
   useEffect(() => {
     const t = setTimeout(() => {
       const clean = {...props};
-      for (const k of BLOB_KEYS) if (String(clean[k] || '').startsWith('blob:')) clean[k] = '';
       localStorage.setItem(LS_LAST, JSON.stringify({template: tplId, props: clean}));
     }, 400);
     return () => clearTimeout(t);
@@ -85,7 +77,7 @@ export const App: React.FC = () => {
 
   const pickTemplate = (id: string) => {
     const t = getTemplate(id);
-    const keep = {brand: props.brand, accentOverride: props.accentOverride, audioUrl: props.audioUrl, audioVolume: props.audioVolume, look: props.look, voice: props.voice};
+    const keep = {brand: props.brand, voice: props.voice};
     setTplId(id);
     setProps({...clone(t.defaultProps), ...Object.fromEntries(Object.entries(keep).filter(([, v]) => v !== undefined && v !== ''))});
     setRender({state: 'idle', progress: 0});
@@ -100,14 +92,7 @@ export const App: React.FC = () => {
     setRender({state: 'idle', progress: 0});
     setTab('content');
     go('studio');
-    flash('ویدیو از روی جلسه ساخته شد؛ نریشن هر صحنه در تب «نریشن» است');
-  };
-  const onFile = (key: BlobKey) => (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    if (f.size > 20 * 1024 * 1024) { flash('حجم فایل باید کمتر از ۲۰ مگابایت باشد'); return; }
-    files.current[key] = f;
-    set(key, URL.createObjectURL(f));
+    flash('ویدیو از روی جلسه ساخته شد؛ نریشن هر صحنه در تب «صدا و نریشن» است');
   };
 
   /* ---------------- projects */
@@ -115,7 +100,6 @@ export const App: React.FC = () => {
     const name = prompt('نام پروژه:', `${tpl.nameFa} — ${new Date().toLocaleDateString('fa-IR')}`);
     if (!name) return;
     const clean = {...props};
-    for (const k of BLOB_KEYS) if (String(clean[k] || '').startsWith('blob:')) clean[k] = '';
     const p: Project = {id: Math.random().toString(36).slice(2, 10), name, template: tplId, props: clean, savedAt: Date.now()};
     const next = [p, ...projects].slice(0, 50);
     setProjects(next);
@@ -175,23 +159,12 @@ export const App: React.FC = () => {
   };
 
   /* ---------------- cloud render (GitHub Actions queue via Worker) */
-  const uploadIfBlob = async (key: BlobKey, p: Record<string, any>) => {
-    const f = files.current[key];
-    if (!String(p[key] || '').startsWith('blob:') || !f) return;
-    const r = await fetch(`${API}/api/files`, {method: 'POST', headers: {'content-type': f.type || 'application/octet-stream'}, body: f});
-    if (!r.ok) throw new Error('آپلود فایل ناموفق بود');
-    const j = await r.json();
-    p[key] = new URL(j.url, API || location.origin).toString();
-  };
   const cloudRender = async () => {
     try {
       const p = clone(props);
-      await uploadIfBlob('audioUrl', p);
-      await uploadIfBlob('coverUrl', p);
-      await uploadIfBlob('narrationUrl', p);
-      const voice = p.narrationUrl ? 'none' : p.voice ?? (['Whiteboard', 'Stickman'].includes(tplId) ? 'farid' : 'none');
-      const narrationPlan = voice === 'none' ? [] : cloudPlan(buildCaptions(buildScenes(tplId, p)));
-      const r = await fetch(`${API}/api/jobs`, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({template: tplId, props: p, title: fileName, voice, narrationPlan, scale})});
+      // local sample clips (voice/…) are not reachable from the cloud runner as URLs: it re-creates missing ones
+      if (p.voicePack) p.voicePack = {voice: p.voicePack.voice, clips: Object.fromEntries(Object.entries(p.voicePack.clips || {}).filter(([, c]: any) => /^https:/.test(c.src)))};
+      const r = await fetch(`${API}/api/jobs`, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({template: tplId, props: p, title: fileName, voice: p.voice ?? 'farid', scale})});
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || 'خطا در ثبت درخواست');
       setJobs((js) => [{id: j.id, status: 'queued', createdAt: Date.now()}, ...js]);
@@ -206,8 +179,8 @@ export const App: React.FC = () => {
   }, [jobs]);
   useEffect(() => { const t = setInterval(refreshJobs, 20_000); return () => clearInterval(t); }, [refreshJobs]);
 
-  const brand = BRANDS[props.brand as BrandId] ?? BRANDS.ali;
-  const accent = props.accentOverride || brand.accent;
+  const theme = getTheme(props.theme, props.brand);
+  const accent = theme.accent;
   const seconds = meta.durationInFrames / meta.fps;
   const estSize = (QUALITIES.find((x) => x.v === quality)!.bps + 192_000) * seconds / 8;
 
@@ -228,7 +201,7 @@ export const App: React.FC = () => {
         </nav>
         <div className="brands" role="tablist" aria-label="برند" style={{display: view === 'studio' ? undefined : 'none'}}>
           {(Object.keys(BRANDS) as BrandId[]).map((id) => (
-            <button key={id} className={props.brand === id ? 'on' : ''} onClick={() => set('brand', id)} style={{['--c' as any]: BRANDS[id].accent}}>
+            <button key={id} className={props.brand === id ? 'on' : ''} onClick={() => setProps((p) => ({...p, brand: id, theme: tpl.fields.some((f) => f.key === 'theme') ? '' : p.theme}))} style={{['--c' as any]: THEMES[BRANDS[id].defaultTheme].accent}}>
               <i />{BRANDS[id].nameFa}
             </button>
           ))}
@@ -244,7 +217,8 @@ export const App: React.FC = () => {
           <h3>قالب‌های ثابت</h3>
           {TEMPLATES.map((t) => (
             <button key={t.id} className={`tcard ${t.id === tplId ? 'on' : ''}`} onClick={() => pickTemplate(t.id)}>
-              <span className="cat">{t.category} · {t.defaultFormat === '16:9' ? 'افقی' : 'عمودی'}{['Whiteboard', 'Stickman'].includes(t.id) ? ' · جدید' : ''}</span>
+              <img className="thumb" src={`thumbs/${t.id}.webp`} alt="" loading="lazy" />
+              <span className="cat">{t.category} · {t.defaultFormat === '16:9' ? 'افقی یوتیوب' : 'عمودی Shorts'}</span>
               <b>{t.nameFa}</b>
               <small>{t.descFa}</small>
             </button>
@@ -291,55 +265,58 @@ export const App: React.FC = () => {
         <aside className="panel editor">
           <div className="tabs">
             <button className={tab === 'content' ? 'on' : ''} onClick={() => setTab('content')}>محتوا</button>
-            <button className={tab === 'narration' ? 'on' : ''} onClick={() => setTab('narration')}>نریشن</button>
-            <button className={tab === 'style' ? 'on' : ''} onClick={() => setTab('style')}>ظاهر و صدا</button>
+            <button className={tab === 'narration' ? 'on' : ''} onClick={() => setTab('narration')}>صدا و نریشن</button>
+            <button className={tab === 'style' ? 'on' : ''} onClick={() => setTab('style')}>ظاهر</button>
             <button className={tab === 'export' ? 'on' : ''} onClick={() => setTab('export')}>خروجی</button>
           </div>
 
           {tab === 'content' && (
             <div className="form">
-              {tpl.fields.map((f) => <FieldEditor key={f.key} f={f} value={props[f.key]} onChange={(v) => set(f.key, v)} onFile={onFile} />)}
+              {tpl.fields.filter((f) => f.key !== 'theme' && f.key !== 'music').map((f) => <FieldEditor key={f.key} f={f} value={props[f.key]} onChange={(v) => set(f.key, v)} />)}
               <p className="hint">نکته: هر کلمه یا عبارتی را بین دو ستاره بنویسید (مثل <code>*دو ماژور*</code>) تا با رنگ برند برجسته شود. اعداد خودکار فارسی می‌شوند.</p>
             </div>
           )}
 
-          {tab === 'narration' && <NarrationPanel tid={tplId} props={props} set={set} onAudio={onFile('narrationUrl')} flash={flash} />}
+          {tab === 'narration' && (
+            <>
+              <NarrationPanel tid={tplId} props={props} set={set} flash={flash} api={API} />
+              {tpl.fields.some((f) => f.key === 'music') && (
+                <div className="form">
+                  <FieldEditor f={tpl.fields.find((f) => f.key === 'music')!} value={props.music} onChange={(v) => set('music', v)} />
+                  <label>بلندی موسیقی بستر: {fa(Math.round((props.musicVolume ?? 0.5) * 100))}٪ (زیر صدای گوینده خودکار کم می‌شود)</label>
+                  <input type="range" min={0} max={1} step={0.05} value={props.musicVolume ?? 0.5} onChange={(e) => set('musicVolume', +e.target.value)} />
+                </div>
+              )}
+              <div className="form"><label className="check"><input type="checkbox" checked={props.sfx !== false} onChange={(e) => set('sfx', e.target.checked)} /> افکت‌های صوتی (ووش، پاپ، دینگ) و صدای پیانو</label></div>
+            </>
+          )}
 
           {tab === 'style' && (
             <div className="form">
-              <label>سبک ظاهری</label>
-              <div className="seg">
-                <button className={props.look !== 'clean' ? 'on' : ''} onClick={() => set('look', 'luxe')}>لوکس (طلایی، نور، بوکه)</button>
-                <button className={props.look === 'clean' ? 'on' : ''} onClick={() => set('look', 'clean')}>ساده و سبک</button>
+              <label>تم رنگی</label>
+              <div className="themes">
+                {(Object.keys(THEMES) as ThemeId[]).map((id) => {
+                  const th = THEMES[id];
+                  const on = theme.id === id;
+                  return (
+                    <button key={id} className={`theme ${on ? 'on' : ''}`} onClick={() => set('theme', id)} style={{background: `radial-gradient(circle at 70% 20%, ${th.blobs[0]}, ${th.bg} 70%)`, color: th.ink}}>
+                      <i style={{background: `linear-gradient(90deg, ${th.accentGrad.join(',')})`}} />
+                      <b>{th.nameFa}</b>
+                    </button>
+                  );
+                })}
               </div>
-              {!['Whiteboard', 'Stickman'].includes(tplId) && (
-                <>
-                  <label>عکس پس‌زمینه</label>
-                  <select value={props.bgImage || ''} onChange={(e) => set('bgImage', e.target.value)}>
-                    {BG_OPTIONS.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}
-                  </select>
-                </>
-              )}
               <label>قطع ویدیو</label>
               <div className="seg">
                 {FORMATS.map((x) => <button key={x.v} className={props.format === x.v ? 'on' : ''} onClick={() => set('format', x.v)} title={x.hint}>{x.l}</button>)}
               </div>
-              <label>رنگ اصلی (خالی = رنگ برند)</label>
-              <div className="row">
-                <input type="color" value={accent} onChange={(e) => set('accentOverride', e.target.value)} />
-                <button className="ghost" onClick={() => set('accentOverride', '')}>بازگشت به رنگ برند</button>
-              </div>
-              <label className="check"><input type="checkbox" checked={props.showWatermark !== false} onChange={(e) => set('showWatermark', e.target.checked)} /> نمایش واترمارک برند</label>
-              <label>موسیقی پس‌زمینه (MP3/WAV، اختیاری)</label>
-              <input type="file" accept="audio/*" onChange={onFile('audioUrl')} />
-              {props.audioUrl ? (
+              {tpl.scripted && (
                 <>
-                  <label>بلندی صدا: {fa(Math.round((props.audioVolume ?? 1) * 100))}٪</label>
-                  <input type="range" min={0} max={1} step={0.05} value={props.audioVolume ?? 1} onChange={(e) => set('audioVolume', +e.target.value)} />
-                  <button className="ghost" onClick={() => set('audioUrl', '')}>حذف صدا</button>
+                  <label className="check"><input type="checkbox" checked={props.mascot !== false && BRANDS[props.brand as BrandId]?.mascot !== false} onChange={(e) => set('mascot', e.target.checked)} /> معلم انیمیشنی (لوگوی ALi Piano.IR)</label>
+                  <label className="check"><input type="checkbox" checked={props.showProgress !== false} onChange={(e) => set('showProgress', e.target.checked)} /> نوار پیشرفت و نام فصل</label>
                 </>
-              ) : null}
-              <p className="hint">فقط از موسیقی‌ای استفاده کنید که حق انتشارش را دارید (آثار خودتان یا بدون کپی‌رایت).</p>
+              )}
+              <p className="hint">فونت‌ها: تیتر «استعداد»، متن «وزیرمتن»، قلاب «لاله‌زار»، شعار «میرزا»، لاتین «Outfit» و نت‌ها «Bravura». اعداد خودکار فارسی می‌شوند.</p>
             </div>
           )}
 
@@ -373,7 +350,7 @@ export const App: React.FC = () => {
               <select value={scale} onChange={(e) => setScale(+e.target.value)}>
                 {RESOLUTIONS.map((r) => <option key={r.v} value={r.v}>{r.l}</option>)}
               </select>
-              <p className="hint">رندر ابری صدای گوینده ({props.voice === 'none' ? 'خاموش' : props.voice === 'dilara' ? 'دلارا' : 'فرید'}) را می‌سازد، با زمان‌بندی زیرنویس هم‌زمان می‌کند و فایل‌های MP3 و SRT را هم کنار ویدیو می‌گذارد. رندر مرورگر فقط تصویر و موسیقی/فایل صدای آپلودشده را دارد.</p>
+              <p className="hint">رندر ابری صدای گوینده ({props.voice === 'none' ? 'خاموش' : props.voice === 'dilara' ? 'دلارا' : 'فرید'}) را می‌سازد، صحنه‌ها و زیرنویس را با آن هم‌زمان می‌کند، صدا را روی −۱۴ LUFS (استاندارد یوتیوب) تنظیم می‌کند و فایل‌های MP3، SRT و فصل‌ها را هم کنار ویدیو می‌گذارد.</p>
               <button className="secondary" onClick={cloudRender}>رندر ابری رایگان (بدون فشار به سیستم)</button>
               <p className="hint">ویدیو روی سرورهای GitHub با Chrome و FFmpeg رندر می‌شود (CRF ۱۸، کیفیت استودیویی). معمولاً ۵ تا ۱۵ دقیقه طول می‌کشد؛ می‌توانید صفحه را ببندید و بعداً برگردید.</p>
               {jobs.length > 0 && (
@@ -387,6 +364,7 @@ export const App: React.FC = () => {
                         <a href={j.url} target="_blank" rel="noreferrer">ویدیو</a>
                         {(j as any).files?.mp3 && <a href={(j as any).files.mp3} target="_blank" rel="noreferrer">صدا</a>}
                         {(j as any).files?.srt && <a href={(j as any).files.srt} target="_blank" rel="noreferrer">زیرنویس</a>}
+                        {(j as any).files?.chapters && <a href={(j as any).files.chapters} target="_blank" rel="noreferrer">فصل‌ها</a>}
                       </span> : j.error ? <small title={j.error}>جزئیات</small> : <span className="spin" />}
                     </div>
                   ))}
@@ -408,7 +386,7 @@ export const App: React.FC = () => {
 
       <footer>
         متن‌باز (MIT) · <a href="https://github.com/alibitcoin666-code/ali-motion-studio" target="_blank" rel="noreferrer">کد در گیت‌هاب</a> · خروجی‌ها فقط دانلود می‌شوند و هیچ‌چیز به‌صورت خودکار منتشر نمی‌شود. کانال <bdi>@Alibaghbani1hand</bdi> تا تکمیل OAC در حالت توقف است.
-        <span> · ساخته‌شده با Remotion (لایسنس رایگان فردی) و فونت‌های وزیرمتن، استعداد و لاله‌زار</span>
+        <span> · ساخته‌شده با Remotion (لایسنس رایگان فردی)، فونت‌های وزیرمتن، استعداد، لاله‌زار و میرزا و نمونه‌های پیانوی Salamander (CC-BY)</span>
       </footer>
       {toast && <div className="toast">{toast}</div>}
     </div>
@@ -416,62 +394,22 @@ export const App: React.FC = () => {
 };
 
 /* ================================================================= field editor */
-const FieldEditor: React.FC<{f: Field; value: any; onChange: (v: any) => void; onFile: (k: BlobKey) => (e: React.ChangeEvent<HTMLInputElement>) => void}> = ({f, value, onChange, onFile}) => {
+const FieldEditor: React.FC<{f: Field; value: any; onChange: (v: any) => void}> = ({f, value, onChange}) => {
   if (f.type === 'scenes') return <ScenesEditor value={value || []} onChange={onChange} label={f.label} />;
-  if (f.type === 'steps') return <StepsEditor value={value || []} onChange={onChange} label={f.label} />;
+  if (f.type === 'check') return <label className="check"><input type="checkbox" checked={value !== false} onChange={(e) => onChange(e.target.checked)} /> {f.label}</label>;
   return (
     <div className="field">
       <label>{f.label}</label>
       {f.type === 'textarea' ? (
         <textarea rows={3} value={value ?? ''} onChange={(e) => onChange(e.target.value)} />
-      ) : f.type === 'lines' ? (
-        <textarea rows={6} value={(value || []).join('\n')} onChange={(e) => onChange(e.target.value.split('\n'))} />
       ) : f.type === 'number' ? (
         <input type="number" min={f.min} max={f.max} step={f.step ?? 1} value={value ?? ''} onChange={(e) => onChange(e.target.value === '' ? '' : +e.target.value)} />
       ) : f.type === 'select' ? (
-        <select value={value} onChange={(e) => onChange(e.target.value)}>{f.options!.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
-      ) : f.type === 'url' ? (
-        <div className="row">
-          <input dir="ltr" placeholder="https://…" value={String(value || '').startsWith('blob:') ? '(فایل انتخاب‌شده)' : value ?? ''} onChange={(e) => onChange(e.target.value)} />
-          <label className="ghost file sm">انتخاب فایل<input type="file" accept="image/*" onChange={onFile('coverUrl')} /></label>
-        </div>
+        <select value={value ?? ''} onChange={(e) => onChange(e.target.value)}>{f.options!.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
       ) : (
-        <input dir={f.type === 'notes' ? 'ltr' : 'auto'} value={value ?? ''} onChange={(e) => onChange(e.target.value)} />
+        <input value={value ?? ''} onChange={(e) => onChange(e.target.value)} />
       )}
-      {f.type === 'notes' && <small className="hint">نت‌ها با حروف انگلیسی و شماره اکتاو: C3 D3 E3 … (دیز: C#3 ، بمل: Bb3)</small>}
-    </div>
-  );
-};
-
-const StepsEditor: React.FC<{value: any[]; onChange: (v: any[]) => void; label: string}> = ({value, onChange, label}) => {
-  const upd = (i: number, k: string, v: any) => onChange(value.map((s, j) => (j === i ? {...s, [k]: v} : s)));
-  const move = (i: number, d: number) => { const n = [...value]; const [x] = n.splice(i, 1); n.splice(i + d, 0, x); onChange(n); };
-  return (
-    <div className="field">
-      <label>{label}</label>
-      {value.map((s, i) => (
-        <div className="step" key={i}>
-          <div className="row between"><b>گام {fa(i + 1)}</b>
-            <span>
-              {i > 0 && <button className="ghost sm" onClick={() => move(i, -1)}>▲</button>}
-              {i < value.length - 1 && <button className="ghost sm" onClick={() => move(i, 1)}>▼</button>}
-              <button className="ghost sm" onClick={() => onChange(value.filter((_, j) => j !== i))}>حذف</button>
-            </span>
-          </div>
-          <input placeholder="عنوان گام" value={s.title} onChange={(e) => upd(i, 'title', e.target.value)} />
-          <textarea rows={2} placeholder="توضیح" value={s.text} onChange={(e) => upd(i, 'text', e.target.value)} />
-          <div className="row">
-            <input dir="ltr" placeholder="C3 E3 G3" value={s.notes} onChange={(e) => upd(i, 'notes', e.target.value)} />
-            <input dir="ltr" placeholder="5 3 1" value={s.fingers} onChange={(e) => upd(i, 'fingers', e.target.value)} style={{maxWidth: 110}} />
-          </div>
-          <select value={s.mode} onChange={(e) => upd(i, 'mode', e.target.value)}>
-            <option value="sequence">پشت سر هم</option>
-            <option value="arpeggio">آرپژ</option>
-            <option value="chord">آکورد هم‌زمان</option>
-          </select>
-        </div>
-      ))}
-      {value.length < 8 && <button className="ghost" onClick={() => onChange([...value, {title: 'گام جدید', text: '', notes: 'C3 E3 G3', fingers: '5 3 1', mode: 'sequence'}])}>+ افزودن گام</button>}
+      {f.help && <small className="hint">{f.help}</small>}
     </div>
   );
 };

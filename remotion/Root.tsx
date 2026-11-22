@@ -1,7 +1,7 @@
 import React from 'react';
 import {Composition} from 'remotion';
-import {TEMPLATES, compositionMeta} from '../src/remotion/registry';
-import {DIMENSIONS, FPS} from '../src/remotion/theme';
+import {TEMPLATES, compositionMeta} from '../src/v3/registry';
+import {DIMENSIONS, FPS} from '../src/v3/theme';
 
 export const RemotionRoot: React.FC = () => (
   <>
@@ -14,7 +14,10 @@ export const RemotionRoot: React.FC = () => (
         fps={FPS}
         {...DIMENSIONS[t.defaultFormat]}
         durationInFrames={t.duration(t.defaultProps)}
-        calculateMetadata={({props}) => compositionMeta(t.id, props)}
+        calculateMetadata={({props}) => {
+          const m = compositionMeta(t.id, props);
+          return {width: m.width, height: m.height, durationInFrames: m.durationInFrames, fps: m.fps};
+        }}
       />
     ))}
   </>

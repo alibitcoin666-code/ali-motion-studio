@@ -106,7 +106,7 @@ export const CoursePanel: React.FC<{onMake: (tid: string, props: Record<string, 
     return types;
   }, [course]);
 
-  const make = (tid: string, base: any, format = '16:9') => onMake(tid, {...base, brand: 'pianova', format, look: 'luxe', captions: true, voice: 'farid', ink: tid === 'Whiteboard' ? 'red' : 'blue'});
+  const make = (tid: string, base: any, format = '16:9') => onMake(tid, {...base, brand: 'pianova', theme: '', format, captions: true, voice: 'farid', voicePack: null});
 
   return (
     <div className="course">
@@ -149,9 +149,8 @@ export const CoursePanel: React.FC<{onMake: (tid: string, props: Record<string, 
                     <b>{l.title}</b>
                     <small>{l.goal}</small>
                     <div className="row wrap">
-                      <button className="primary sm" onClick={() => make('Whiteboard', lessonToScript(l, course))}>ویدیو وایت‌برد</button>
-                      <button className="secondary sm" onClick={() => make('Stickman', lessonToScript(l, course))}>ویدیو استیکمن</button>
-                      <button className="ghost sm" onClick={() => make('Whiteboard', lessonToScript(l, course), '9:16')}>نسخهٔ عمودی</button>
+                      <button className="primary sm" onClick={() => make('LessonPro', lessonToScript(l, course))}>ساخت ویدیوی آموزشی</button>
+                      <button className="ghost sm" onClick={() => make('LessonPro', {...lessonToScript(l, course), variant: 'tip'}, '9:16')}>نسخهٔ عمودی</button>
                       <button className="ghost sm" onClick={() => setOpen(open === l.id ? null : l.id)}>{open === l.id ? 'بستن' : 'جزئیات'}</button>
                     </div>
                     {open === l.id && (
@@ -197,8 +196,8 @@ export const CoursePanel: React.FC<{onMake: (tid: string, props: Record<string, 
                         <td>{r.title}</td>
                         <td>{r.status}</td>
                         <td>
-                          {l ? <button className="ghost sm" onClick={() => make('Whiteboard', lessonToScript(l, course))}>ساخت ویدیو</button> : null}
-                          {c ? <button className="ghost sm" onClick={() => make('Stickman', curiosityToScript(c, course), '9:16')}>شورتس</button> : null}
+                          {l ? <button className="ghost sm" onClick={() => make('LessonPro', lessonToScript(l, course))}>ساخت ویدیو</button> : null}
+                          {c ? <button className="ghost sm" onClick={() => make('TipShort', curiosityToScript(c, course), '9:16')}>شورتس</button> : null}
                         </td>
                       </tr>
                     );
@@ -218,8 +217,7 @@ export const CoursePanel: React.FC<{onMake: (tid: string, props: Record<string, 
                     <b>{c.hook}</b>
                     <small>{c.fact.slice(0, 140)}…</small>
                     <div className="row wrap">
-                      <button className="primary sm" onClick={() => make('Stickman', curiosityToScript(c, course), '9:16')}>شورتس استیکمن</button>
-                      <button className="secondary sm" onClick={() => make('Whiteboard', curiosityToScript(c, course), '9:16')}>شورتس وایت‌برد</button>
+                      <button className="primary sm" onClick={() => make('TipShort', curiosityToScript(c, course), '9:16')}>ساخت Shorts</button>
                       <button className="ghost sm" onClick={() => copy(c.caption)}>کپی کپشن</button>
                     </div>
                   </div>

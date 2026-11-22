@@ -14,6 +14,6 @@ The importer (`src/course/parse.ts`) accepts a ZIP with any top folder. Recognis
 
 Card JSON `hero`: `keyboard` (`highlights`: white-key indices from C4, or `bN` for black keys), `staff` (`notes`: `[[pos, label]]`, pos 0 = C4), `hand` (`hand_side`).
 
-`lessonToScript()` turns a lesson into Whiteboard/Stickman scenes: one scene per narration segment (segment length = minimum scene length), on-screen text from overlapping motion rows, the hero drawing from the card, plus a quiz scene before the outro.
+`lessonToScript()` turns a lesson into LessonPro scenes: a hook, one scene per narration segment (on-screen text from overlapping motion rows, keyboard/staff from the card hero), a quiz with a 3 s countdown before the recap, and an outro with the subscribe end screen.
 
 Build the bundled demo course: `bash scripts/course.sh <folder|zip> pianova`.
