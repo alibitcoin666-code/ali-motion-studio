@@ -9,7 +9,7 @@
  *   ams still <Template> [props] [--frame N] [--out f.png]   quick look (≈1 min)
  *   ams render <Template> [props] [--draft|--hq] [--out f.mp4]   render on this machine (voice, master, SRT, narration prompt)
  *   ams narration <Template> [props] [--out base]     narration prompt pack only (.narration.md/.json, no render)
- *   ams cloud <Template> [props] [--title t] [--no-wait]     free cloud render (GitHub Actions), download result
+ *   ams cloud <Template> [props] [--title t] [--no-wait] [--fallback-local]   free cloud render (GitHub Actions), download result
  *   ams status <jobId>                 cloud job status
  *   ams qa <file.mp4>                  YouTube spec check + loudness + black frames + contact sheet
  *
@@ -28,6 +28,7 @@ const FFMPEG = process.env.FFMPEG || 'ffmpeg';
 const FFPROBE = process.env.FFPROBE || 'ffprobe';
 const PY = process.env.PYTHON || 'python3';
 const OUT = path.join(root, 'out');
+const REPO = process.env.AMS_REPO || 'alibitcoin666-code/ali-motion-studio';
 const [cmd, ...rest] = process.argv.slice(2);
 
 const flag = (name) => { const i = rest.indexOf(name); if (i < 0) return undefined; const v = rest[i + 1]; rest.splice(i, v && !v.startsWith('--') ? 2 : 1); return v && !v.startsWith('--') ? v : true; };
@@ -144,7 +145,7 @@ async function narration() {
 
 /* ------------------------------------------------------------------ cloud */
 async function cloud() {
-  const title = flag('--title'); const noWait = !!flag('--no-wait');
+  const title = flag('--title'); const noWait = !!flag('--no-wait'); const fallback = !!flag('--fallback-local');
   const [id, propsFile] = rest; const t = await tpl(id);
   const props = {...t.defaultProps, ...readProps(propsFile)};
   // the cloud makes its own narration; local relative voice files can't be fetched from GitHub
@@ -152,8 +153,11 @@ async function cloud() {
   const res = await fetch(API + '/api/jobs', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({template: id, props, title: title || `${id}_${Date.now()}.mp4`, voice: props.voice})});
   const j = await res.json().catch(() => ({}));
   if (!res.ok || !j.id) fail('cloud job rejected', {status: res.status, body: j});
-  console.error(`queued ${j.id} — the free cloud runner checks the queue every ~5 min; a 100 s lesson takes ≈10–15 min`);
-  if (noWait) done({job: j.id, status: 'queued', check: `ams status ${j.id}`});
+  console.error(`queued ${j.id}; a 100 s lesson takes about 10–15 min once the runner starts`);
+  // GitHub's free cron is best-effort (can be hours late) → kick the runner right away when gh is logged in
+  const kicked = has('gh', ['workflow', 'run', 'render-queue.yml', '-R', REPO]);
+  if (!kicked) console.error(`could not start the runner automatically. Trigger workflow "render-queue.yml" (workflow_dispatch) on ${REPO} with your GitHub connector, or wait for the cron`);
+  if (noWait) done({job: j.id, status: 'queued', kicked, check: `ams status ${j.id}`, ...(kicked ? {} : {kickManually: `workflow_dispatch render-queue.yml on ${REPO}`})});
   const t0 = Date.now();
   for (;;) {
     await new Promise((r) => setTimeout(r, 20000));
@@ -168,6 +172,11 @@ async function cloud() {
         const b = Buffer.from(await (await fetch(u)).arrayBuffer()); fs.writeFileSync(f, b); files.push(f);
       }
       done({job: j.id, video: files[0], files, url: s.url, next: `ams qa ${files[0]}`});
+    }
+    if (fallback && s.status === 'queued' && Date.now() - t0 > +(process.env.AMS_CLOUD_WAIT || 12) * 60e3) {
+      console.error('cloud runner did not start in time → rendering on this machine instead');
+      rest.splice(0, rest.length, id, ...(propsFile ? [propsFile] : []), '--out', path.join(OUT, (title || id).replace(/\.mp4$/, '') + '.mp4'));
+      return render();
     }
     if (Date.now() - t0 > 50 * 60e3) fail('timeout waiting for cloud render', {job: j.id});
   }

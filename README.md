@@ -23,7 +23,7 @@
 - ورود زیپ دوره (`docs/COURSE_ZIP_FORMAT.md`)، راهنمای ساده (`docs/GUIDE_SIMPLE.md`)، رشد کانال (`docs/YOUTUBE_GROWTH.md`). متن‌باز (MIT)؛ برای ویرایش با هر هوش مصنوعی `AGENTS.md` را به آن بدهید.
 
 ## اجرا داخل Muse (Meta)
-با یک پیام نصب می‌شود. متن آماده در [muse/INSTALL_PROMPT.md](muse/INSTALL_PROMPT.md) است و راهنمای کامل در [muse/README.md](muse/README.md). بعد از نصب، دستور `ams` و اسکیل `ali-motion-studio` در Muse در دسترس است.
+با یک پیام نصب می‌شود. متن آماده در [muse/INSTALL_PROMPT.md](muse/INSTALL_PROMPT.md) است و راهنمای کامل در [muse/README.md](muse/README.md). بعد از نصب، دستور `ams` و اسکیل `ali-motion-studio` در Muse در دسترس است. کنار هر ویدیو یک فایل `‎.narration.md` هم ساخته می‌شود که پرامپت آمادهٔ نریشن را دارد.
 
 ## قالب‌های ثابت
 | قالب | قطع | کاربرد |

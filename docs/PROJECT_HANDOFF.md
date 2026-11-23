@@ -1,6 +1,6 @@
 # Ali Motion Studio: Complete Project Handoff File
 
-Last updated: 2026-11-23. Read this file first, then continue the work.
+Last updated: 2026-11-23 (step 12: narration prompt and quality). Read this file first, then continue the work.
 
 ## 1. Who and what
 - **User:** Ali Baghbani, piano teacher. Speaks Persian, with a weak laptop (Win11, GeForce 840M).
@@ -67,6 +67,7 @@ The full schema is in `muse/skill/ali-motion-studio/references/script-format.md`
 - **v2:** simple guide, Telegram, ZIP import, whiteboard and stickman templates (STEP_05 to STEP_06).
 - **v3:** complete rewrite of quality, animation, typography, voice and subtitles. The logo replaces the stickman. Commits 1b8fa78 and 056cf92 (STEP_08 to STEP_10).
 - **v3.1 / Muse:** installer, `ams` CLI and Muse skill. Commits c75d953 and ffe5cd7 (STEP_11).
+- **v3.2:** narration prompt pack next to every video (`scripts/narration.mjs`); JPEG 95 / `--hq` / 384k audio; quality playbook; `ams cloud` starts the runner immediately and supports `--fallback-local` (STEP_12).
 
 ## 7. Running inside Muse (Meta)
 **Muse VM:**
@@ -88,7 +89,7 @@ The full schema is in `muse/skill/ali-motion-studio/references/script-format.md`
 **Commands:**
 ```
 ams doctor | templates | sample <T> | course <n> [--short] | still <T> [props]
-ams render <T> [props] [--draft] [--out f.mp4] | cloud <T> [props] [--title] [--no-wait]
+ams render <T> [props] [--draft|--hq] [--out f.mp4] | narration <T> [props] | cloud <T> [props] [--title] [--no-wait] [--fallback-local]
 ams status <job> | qa <file.mp4>
 ```
 Environment variables: FFMPEG, FFPROBE, PYTHON, AMS_BROWSER, AMS_CONCURRENCY, AMS_DRAFT, AMS_API.
@@ -109,8 +110,24 @@ Environment variables: FFMPEG, FFPROBE, PYTHON, AMS_BROWSER, AMS_CONCURRENCY, AM
 - `ffmpegFullChain: false`. The full ffmpeg download didn't finish because Sentinel had not approved the `release-assets.githubusercontent.com` domain. That domain is now added to the list. Fix: approve the domain and run install.sh again.
 - Muse stopped before the test render because its security check flagged SKILL.md as able to run code. This is a generic warning: the skill does contain commands, but the repository belongs to the user. The fix is for the user to approve it.
 
+### Muse's second install result (from the user)
+- ffmpegFullChain true and all Ready fields true. Muse has 4 CPUs.
+- The skill is at `~/workspace/custom-skills/ali-motion-studio/`.
+- TipShort --draft took 130 s on Muse. QA passed apart from the draft size.
+
+### Step 12 (narration)
+- Every render writes `<name>.narration.md` and `.narration.json` with these parts:
+  - the timed scene table
+  - a Gemini/ChatGPT director prompt
+  - the ElevenLabs v3 audio-tag version
+  - plain text
+  - the self-recording sheet
+- The skill puts section 2 into Muse's reply.
+- In the cloud, md/json files are direct public GitHub release links, because the Worker only proxies mp4/mp3/srt/txt.
+- Known issue: GitHub cron is unreliable and was once late for 3 hours. Fix: `ams cloud` runs `gh workflow run`, Muse can use its GitHub connector, and `--fallback-local` is available.
+
 ## 8. Next step (for the next AI)
-1. Tell Muse to approve `release-assets.githubusercontent.com`, run `bash ~/workspace/ali-motion-studio/muse/install.sh` again, and check that `ffmpegFullChain` is true.
+1. Tell Muse to run `bash ~/workspace/ali-motion-studio/muse/install.sh` again for the update (step 12). Then render one TipShort and check that the narration.md file appears next to it.
 2. With the user's approval, run:
    - `ams render TipShort --draft`
    - `ams qa` on the output, then review the contact sheet

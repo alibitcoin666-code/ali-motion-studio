@@ -28,4 +28,4 @@ Ali Motion Studio (v3) is a free, browser-first app for making Persian (RTL) pia
 - Audio assets: piano = Salamander Grand (CC-BY, credit Alexander Holm); beds and SFX are synthesised by `scripts/audio/build-audio.mjs` (no copyright).
 
 ## CLI (`ams`)
-`node scripts/ams.mjs <doctor|templates|sample|course|still|render|cloud|status|qa>`. The Muse installer is at `muse/install.sh` and the skill at `muse/skill/ali-motion-studio/`. Env vars: FFMPEG, FFPROBE, PYTHON, AMS_BROWSER, AMS_CONCURRENCY, AMS_DRAFT, AMS_API.
+`node scripts/ams.mjs <doctor|templates|sample|course|still|render|narration|cloud|status|qa>` (every render also writes `<name>.narration.md/json` via `scripts/narration.mjs`). The Muse installer is at `muse/install.sh` and the skill at `muse/skill/ali-motion-studio/`. Env vars: FFMPEG, FFPROBE, PYTHON, AMS_BROWSER, AMS_CONCURRENCY, AMS_DRAFT, AMS_API.

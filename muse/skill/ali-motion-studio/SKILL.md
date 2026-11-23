@@ -24,14 +24,17 @@ No API key or password is needed anywhere. Never ask the user for one.
 1. **Pick the template** (`ams templates`):
    | Need | Template | Format | Where to render |
    |---|---|---|---|
-   | Full lesson (60–180 s) | `LessonPro` | 16:9 | `ams cloud` (≈10–15 min, free) |
-   | Tip / technique Short | `TipShort` | 9:16 | `ams render` locally (≈4–6 min) |
+   | Full lesson (60–180 s) | `LessonPro` | 16:9 | local if ≥ 4 vCPU, else `ams cloud --fallback-local` |
+   | Tip / technique Short | `TipShort` | 9:16 | `ams render` locally (≈2–3 min) |
    | Chord of the day Short | `ChordDay` | 9:16 | local |
    | Motivational quote Short | `KineticQuote` | 9:16 | local |
    | Falling-notes song (Ode to Joy, Twinkle, Für Elise, Minuet) | `FallingNotes` | 16:9 / 9:16 | local |
    | Channel intro/outro sting | `LogoIntro` | 16:9 | local (≈1 min) |
-   Measured on a 2 vCPU / 8 GB machine (same as the Muse VM): 103 s lesson = 13 min, 30 s Short = 4–5 min.
-   The VM has 2 cores, so anything longer than ~60 s goes to `ams cloud`, which keeps Muse free for other work.
+   Measured times:
+   - 2 vCPU: 30 s Short final 1080p = 3 min, draft = about 1 min; 103 s lesson = about 13 min.
+   - The user's Muse VM has 4 vCPU (`ams doctor` shows `cpus`), so rendering is roughly 1.5–2× faster.
+   - Rule: if `cpus` ≥ 4, render everything up to about 3 min **locally**, because it is the most reliable. Use `ams cloud --fallback-local` only for long lessons, or when Muse must stay free.
+   - GitHub's free cron is best-effort and can be hours late. `ams cloud` therefore starts the runner itself when `gh` is logged in. Otherwise, trigger workflow `render-queue.yml` (workflow_dispatch) on `alibitcoin666-code/ali-motion-studio` with your GitHub connector right after queuing. With `--fallback-local`, it renders locally if the runner has not started within 12 min.
 2. **Write the props**:
    - Sample to edit: `ams sample <Template> out/<name>.json`
    - Course lesson: `ams course <n>` (16:9) or `ams course <n> --short` (9:16). Lessons come from `public/course/pianova.json` (26 lessons, brand `pianova`).
