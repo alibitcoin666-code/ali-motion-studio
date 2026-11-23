@@ -7,7 +7,8 @@
  *   ams sample <Template> [file.json]  write the template's sample props → edit this file
  *   ams course <n> [--short] [file]    course lesson n (public/course/pianova.json) → props file
  *   ams still <Template> [props] [--frame N] [--out f.png]   quick look (≈1 min)
- *   ams render <Template> [props] [--draft] [--out f.mp4]    render on this machine (voice, master, SRT)
+ *   ams render <Template> [props] [--draft|--hq] [--out f.mp4]   render on this machine (voice, master, SRT, narration prompt)
+ *   ams narration <Template> [props] [--out base]     narration prompt pack only (.narration.md/.json, no render)
  *   ams cloud <Template> [props] [--title t] [--no-wait]     free cloud render (GitHub Actions), download result
  *   ams status <jobId>                 cloud job status
  *   ams qa <file.mp4>                  YouTube spec check + loudness + black frames + contact sheet
@@ -117,16 +118,28 @@ async function still() {
   done({still: o});
 }
 async function render() {
-  const draft = !!flag('--draft'); const out = flag('--out');
+  const draft = !!flag('--draft'); const hq = !!flag('--hq'); const out = flag('--out');
   const [id, propsFile] = rest; await tpl(id);
   const o = path.resolve(out || path.join(OUT, `${id}${draft ? '_draft' : ''}.mp4`));
   const a = [path.join(root, 'scripts/render-job.mjs'), '--local', id]; if (propsFile) a.push(path.resolve(propsFile)); else a.push('');
   a.push(o);
   const t0 = Date.now();
-  const r = run(process.execPath, a, {cwd: root, stdio: ['ignore', 'inherit', 'inherit'], env: {...process.env, ...(draft ? {AMS_DRAFT: '1'} : {})}});
+  const r = run(process.execPath, a, {cwd: root, stdio: ['ignore', 'inherit', 'inherit'], env: {...process.env, ...(draft ? {AMS_DRAFT: '1'} : {}), ...(hq ? {AMS_HQ: '1'} : {})}});
   if (r.status !== 0 || !fs.existsSync(o)) fail('render failed');
-  const side = ['srt', 'chapters.txt', 'mp3'].map((x) => o.replace(/\.mp4$/, '.' + x)).filter((f) => fs.existsSync(f));
+  const side = ['srt', 'chapters.txt', 'mp3', 'narration.md', 'narration.json'].map((x) => o.replace(/\.mp4$/, '.' + x)).filter((f) => fs.existsSync(f));
   done({video: o, files: side, seconds: Math.round((Date.now() - t0) / 1000), next: `ams qa ${o}`});
+}
+
+async function narration() {
+  const out = flag('--out');
+  const [id, propsFile] = rest; const t = await tpl(id);
+  const props = {...t.defaultProps, ...readProps(propsFile)};
+  const {narrationPack} = await import(pathToFileURL(path.join(root, 'scripts/narration.mjs')).href);
+  const n = narrationPack(await v3(), id, props);
+  const base = path.resolve(out || path.join(OUT, id)).replace(/\.(mp4|md)$/, '');
+  fs.mkdirSync(path.dirname(base), {recursive: true});
+  fs.writeFileSync(base + '.narration.md', n.md); fs.writeFileSync(base + '.narration.json', JSON.stringify(n.json, null, 1));
+  done({narration: base + '.narration.md', json: base + '.narration.json', scenes: n.json.scenes.length, seconds: n.json.durationSec, timing: n.json.timing});
 }
 
 /* ------------------------------------------------------------------ cloud */
@@ -190,10 +203,12 @@ async function qa() {
   if (info.truePeak > -0.5) problems.push(`true peak ${info.truePeak} dBFS`);
   if (info.blackSegments) problems.push(`${info.blackSegments} black segment(s)`);
   if (vertical && info.seconds > 180) problems.push('vertical video over 3 min will not be a Short');
+  const nar = f.replace(/\.mp4$/, '.narration.md'); info.narration = fs.existsSync(nar) ? nar : null;
+  if (!info.narration) problems.push('narration prompt missing → run: ams narration <Template> <props> --out ' + f);
   done({qa: info, sheet: fs.existsSync(sheet) ? sheet : null, youtubeReady: problems.length === 0, problems});
 }
 
-const cmds = {doctor, templates, sample, course, still, render, cloud, status, qa};
+const cmds = {doctor, templates, sample, course, still, render, narration, cloud, status, qa};
 if (!cmds[cmd]) {
   console.log(fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').split('*/')[0].replace(/^#!.*\n\/\*\*/, '').replace(/^ \* ?/gm, ''));
   process.exit(cmd ? 1 : 0);

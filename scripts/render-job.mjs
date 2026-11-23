@@ -39,6 +39,7 @@ const FFMPEG = process.env.FFMPEG || 'ffmpeg';
 const FFPROBE = process.env.FFPROBE || 'ffprobe';
 // Draft = half resolution + fast encode, for quick previews on a 2-vCPU machine
 const DRAFT = process.env.AMS_DRAFT === '1';
+const HQ = !DRAFT && process.env.AMS_HQ === '1'; // slower, best text sharpness (VMAF-tested settings)
 const CONCURRENCY = +(process.env.AMS_CONCURRENCY || 0) || Math.max(1, Math.min(8, os.cpus().length));
 /** Reuse a Chrome Headless Shell already on the machine (Playwright cache) so nothing big has to download. */
 function findBrowser() {
@@ -134,10 +135,12 @@ export async function renderOne(template, props, outFile, scale = 1) {
   const url = await getBundle();
   const composition = await selectComposition({serveUrl: url, id: template, inputProps: props, browserExecutable: BROWSER});
   if (DRAFT) scale = Math.min(scale, 0.5);
-  log(`render ${template} ${composition.width}x${composition.height} ${composition.durationInFrames}f${DRAFT ? ' (draft)' : ''} concurrency ${CONCURRENCY} → ${outFile}`);
+  log(`render ${template} ${composition.width}x${composition.height} ${composition.durationInFrames}f${DRAFT ? ' (draft)' : HQ ? ' (HQ)' : ''} concurrency ${CONCURRENCY} → ${outFile}`);
   let last = -1;
   await renderMedia({
-    composition, serveUrl: url, codec: 'h264', crf: DRAFT ? 26 : 18, pixelFormat: 'yuv420p', x264Preset: DRAFT ? 'veryfast' : 'medium',
+    composition, serveUrl: url, codec: 'h264', crf: DRAFT ? 26 : HQ ? 15 : 18, pixelFormat: 'yuv420p', x264Preset: DRAFT ? 'veryfast' : HQ ? 'slow' : 'medium',
+    // JPEG 80 → 95 lifts VMAF on Persian text/fine lines by ~1.2–1.7 for ~0–20% time (remotion-dev/remotion#11441)
+    jpegQuality: DRAFT ? 80 : HQ ? 100 : 95,
     audioCodec: 'aac', audioBitrate: DRAFT ? '160k' : '320k', browserExecutable: BROWSER, colorSpace: 'bt709', outputLocation: outFile, scale, inputProps: props,
     concurrency: CONCURRENCY, chromiumOptions: {gl: 'swangle'}, timeoutInMilliseconds: 120_000,
     onProgress: ({progress}) => { const pct = Math.floor(progress * 10) * 10; if (pct !== last) { last = pct; log(`  ${pct}%`); } },
@@ -159,7 +162,7 @@ function master(file) {
     ? `loudnorm=${tgt}:measured_I=${info.input_i}:measured_TP=${info.input_tp}:measured_LRA=${info.input_lra}:measured_thresh=${info.input_thresh}:offset=${info.target_offset}:linear=true,aresample=48000`
     : `loudnorm=${tgt},aresample=48000`;
   const tmp = file.replace(/\.mp4$/, '.m.mp4');
-  sh(FFMPEG, ['-y', '-v', 'error', '-i', file, '-map', '0:v', '-map', '0:a', '-c:v', 'copy', '-af', af, '-c:a', 'aac', '-b:a', '320k', '-ar', '48000', '-movflags', '+faststart', tmp]);
+  sh(FFMPEG, ['-y', '-v', 'error', '-i', file, '-map', '0:v', '-map', '0:a', '-c:v', 'copy', '-af', af, '-c:a', 'aac', '-b:a', '384k', '-ar', '48000', '-movflags', '+faststart', tmp]);
   fs.renameSync(tmp, file);
   log(`mastered: input ${info?.input_i ?? '?'} LUFS → -14 LUFS`);
   return info;
@@ -183,6 +186,13 @@ async function sideFiles(template, props, file) {
     sh(FFMPEG, ['-y', '-v', 'error', '-i', file, '-vn', '-c:a', 'libmp3lame', '-b:a', '192k', base + '.mp3']);
     out.mp3 = base + '.mp3';
   }
+  // narration prompt pack (timed script + AI-voice prompts + self-recording sheet)
+  try {
+    const {narrationPack} = await import('./narration.mjs');
+    const n = narrationPack(m, template, props);
+    fs.writeFileSync(base + '.narration.md', n.md); out.narration = base + '.narration.md';
+    fs.writeFileSync(base + '.narration.json', JSON.stringify(n.json, null, 1)); out.narrationJson = base + '.narration.json';
+  } catch (e) { log('narration pack skipped:', e.message); }
   return out;
 }
 
@@ -210,7 +220,8 @@ function upload(file) {
   gh('release', 'upload', TAG, file, '--repo', REPO, '--clobber');
   return `https://github.com/${REPO}/releases/download/${TAG}/${path.basename(file)}`;
 }
-const proxied = (u) => (API ? `${API}/api/render/${path.basename(u)}` : u);
+// the Worker proxies media types only; .md/.json stay as direct public release links
+const proxied = (u) => (API && /\.(mp4|mp3|srt|txt)$/.test(u) ? `${API}/api/render/${path.basename(u)}` : u);
 
 /* ---------- queue */
 async function runQueue() {

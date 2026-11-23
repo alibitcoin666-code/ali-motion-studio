@@ -1,6 +1,6 @@
 ---
 name: ali-motion-studio
-description: Make professional Persian piano motion-graphics videos (lessons 16:9, tips/chords/quotes Shorts 9:16, falling-notes, logo intro) for Ali Baghbani / Pianova / Music Radio 69 with the open-source Ali Motion Studio (Remotion) — logo mascot teacher, free Persian narration with word-synced captions, real piano sound, -14 LUFS master, SRT + chapters. Trigger phrases: "ویدیو موشن بساز", "ویدیوی آموزشی پیانو بساز", "شورتس نکته پیانو بساز", "آکورد روز بساز", "جلسه N دوره را ویدیو کن", "make a piano motion video", "render lesson N".
+description: Make professional Persian piano motion-graphics videos (lessons 16:9, tips/chords/quotes Shorts 9:16, falling-notes, logo intro) for Ali Baghbani / Pianova / Music Radio 69 with the open-source Ali Motion Studio (Remotion) — logo mascot teacher, free Persian narration with word-synced captions, real piano sound, -14 LUFS master, SRT + chapters, and a narration prompt pack (timed script + ready AI-voice prompts) next to every video. Trigger phrases: "ویدیو موشن بساز", "ویدیوی آموزشی پیانو بساز", "شورتس نکته پیانو بساز", "آکورد روز بساز", "جلسه N دوره را ویدیو کن", "make a piano motion video", "render lesson N".
 ---
 
 # Ali Motion Studio for Muse
@@ -39,18 +39,28 @@ No API key or password is needed anywhere. Never ask the user for one.
 3. **Look before rendering**: run `ams still <Template> <props> --frame 90` and view the PNG (about 1 min). Check that the Persian text joins correctly and nothing is clipped.
 4. **Render**:
    - `ams render <Template> <props>` gives the final 1080p file.
-   - Add `--draft` for a 540p preview (about 2× faster).
-   - Or run `ams cloud <Template> <props> --title <ascii_name>`. It blocks until done (it polls every 20 s) and downloads mp4 + srt + chapters + mp3 into `out/`.
+   - Add `--draft` for a 540p preview (about 2× faster). Use this for every first look.
+   - Add `--hq` for the final upload of an important video: JPEG 100, CRF 15 and x264 slow, so the sharpest Persian text. It takes about 1.5× longer.
+   - Or run `ams cloud <Template> <props> --title <ascii_name>`. It blocks until done (it polls every 20 s) and downloads mp4 + srt + chapters + mp3 + narration.md/json into `out/`.
    - For long jobs, use `--no-wait` and then `ams status <id>`.
-5. **QA**: run `ams qa out/<file>.mp4`.
+5. **QA**: run `ams qa out/<file>.mp4`, then score the contact sheet with `references/quality-playbook.md`.
+   - Score it out of 10. If it is below 9, revise the props and re-render, at most 2 revisions. This stops endless loops and wasted tokens.
    - It must say `youtubeReady: true`. Then view the `.sheet.png` contact sheet yourself.
    - If something fails, fix the props and re-render. Never deliver a file that failed QA.
-6. **Deliver**: send the MP4 plus SRT and chapters to the user's Google Drive or the private Telegram bot chat, with a YouTube title, a description (with chapters) and tags drafted in Persian. Ask before any upload to YouTube (see Operating Rules).
+6. **Narration prompt (always)**: every render writes `<file>.narration.md` and `.narration.json` next to the MP4. It holds:
+   - a timed scene-by-scene script, with the maximum seconds each scene's voice can take
+   - a Gemini-TTS / ChatGPT-voice director prompt (audio profile → scene → director's notes → transcript)
+   - an ElevenLabs v3 audio-tag version
+   - plain TTS text
+   - a self-recording sheet
+   For a pack without rendering, run `ams narration <Template> <props>`. If you edit `say` lines, run it again.
+7. **Deliver**: send the MP4, the SRT, the chapters **and the `.narration.md`** to the user's Google Drive or the private Telegram bot chat, with a YouTube title, a description (with chapters) and tags drafted in Persian. Ask before any upload to YouTube (see Operating Rules).
 
 ## Output Contract
 Reply in Persian, short:
 - Template, brand, length, resolution, size, LUFS and the QA verdict
-- Links or attachments: MP4, SRT, chapters, contact sheet
+- Links or attachments: MP4, SRT, chapters, contact sheet, **narration.md**
+- **The narration prompt**: paste section ۲ of `<file>.narration.md` (the director prompt and transcript) into the reply inside a code block. That way the user can copy it straight into any AI voice tool.
 - A ready-to-paste YouTube title, description with chapters, and 10 tags
 - What you would change next time (one line)
 
@@ -73,4 +83,5 @@ Reply in Persian, short:
 ## References
 - `references/script-format.md`: props and scene schema, with examples
 - `references/youtube-checklist.md`: specs, retention rules and the metadata template
+- `references/quality-playbook.md`: what really improves the output (render settings, script, voice, design) and the 10-point self-review
 - Full docs in the repo: `README.md`, `AGENTS.md`, `docs/GUIDE_SIMPLE.md`, `docs/YOUTUBE_GROWTH.md`
