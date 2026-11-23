@@ -6,7 +6,7 @@ Copy the text below as-is and paste it into a new Muse chat:
 
 می‌خواهم «استودیو موشن علی» (Ali Motion Studio) را روی کامپیوتر خودت (Muse Secure VM) نصب کنی و به‌عنوان یک اسکیل دائمی ذخیره کنی.
 
-۱. این دستور را در ترمینال خودت اجرا کن (اگر Sentinel اجازه خواست، دسترسی دائمی به github.com و raw.githubusercontent.com و objects.githubusercontent.com و nodejs.org و registry.npmjs.org و pypi.org و files.pythonhosted.org و speech.platform.bing.com و ali-motion-studio.ali-bitcoin666.workers.dev را از من بپرس):
+۱. این دستور را در ترمینال خودت اجرا کن (اگر Sentinel اجازه خواست، دسترسی دائمی به github.com و raw.githubusercontent.com و objects.githubusercontent.com و release-assets.githubusercontent.com و nodejs.org و registry.npmjs.org و pypi.org و files.pythonhosted.org و speech.platform.bing.com و ali-motion-studio.ali-bitcoin666.workers.dev را از من بپرس):
 ```
 curl -fsSL https://raw.githubusercontent.com/alibitcoin666-code/ali-motion-studio/main/muse/install.sh | bash
 ```

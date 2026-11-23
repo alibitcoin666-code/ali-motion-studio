@@ -14,7 +14,7 @@ the user decides what gets published. Web editor for humans: https://ali-motion-
 1. If `command -v ams` fails, run:
    `curl -fsSL https://raw.githubusercontent.com/alibitcoin666-code/ali-motion-studio/main/muse/install.sh | bash`
    (~5 min; installs Node, ffmpeg, edge-tts and Chrome under `$HOME` because only `$HOME` survives a VM restart).
-   Approve these destinations permanently when Sentinel asks: github.com, objects.githubusercontent.com,
+   Approve these destinations permanently when Sentinel asks: github.com, objects.githubusercontent.com, release-assets.githubusercontent.com,
    raw.githubusercontent.com, nodejs.org, registry.npmjs.org, pypi.org, files.pythonhosted.org,
    speech.platform.bing.com, ali-motion-studio.ali-bitcoin666.workers.dev.
 2. `ams doctor` → every `*Ready` field must be `true`. Fix what `tips` says before continuing.
